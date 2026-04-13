@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="card">
+    <div class="section-header">
+      <h2>История запусков</h2>
+      <span class="note">Сначала новые</span>
+    </div>
+    {% if runs %}
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Задача</th>
+            <th>Статус</th>
+            <th>Старт</th>
+            <th>Завершение</th>
+            <th>Перенесено</th>
+            <th>Итог</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for run in runs %}
+            <tr>
+              <td><a href="/runs/{{ run.id }}">#{{ run.id }}</a></td>
+              <td>{{ run.job.name if run.job else run.job_id }}</td>
+              <td><span class="badge badge-{{ run.status }}">{{ status_label(run.status) }}</span></td>
+              <td>{{ run.started_at }}</td>
+              <td>{{ run.finished_at or "-" }}</td>
+              <td>{{ run.files_transferred }} файлов / {{ run.bytes_transferred }} байт</td>
+              <td>{{ run.summary }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="empty-state">История запусков пока пуста.</p>
+    {% endif %}
+  </section>
+{% endblock %}

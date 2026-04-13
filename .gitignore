@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.DS_Store
+
+var/
+tmp/
+
+*.log
+
+local_sync_dashboard.egg-info/

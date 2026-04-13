@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="grid two align-start">
+    <article class="card">
+      <h2>Создать задачу синхронизации</h2>
+      <form method="post" action="/jobs" class="stack">
+        <label>
+          <span>Название</span>
+          <input name="name" required placeholder="Фото с Synology на Яндекс Диск" value="{{ prefill.name }}" />
+        </label>
+
+        <label>
+          <span>Профиль-источник</span>
+          <select name="source_profile_id">
+            {% for profile in profiles %}
+              <option value="{{ profile.id }}" {% if prefill.source_profile_id == profile.id %}selected{% endif %}>{{ profile.name }} ({{ profile_type_label(profile.profile_type) }})</option>
+            {% endfor %}
+          </select>
+        </label>
+
+        <label>
+          <span>Подпапка в источнике</span>
+          <input name="source_path" placeholder="необязательно/подкаталог" value="{{ prefill.source_path }}" />
+        </label>
+
+        <label>
+          <span>Профиль-назначение</span>
+          <select name="target_profile_id">
+            {% for profile in profiles %}
+              <option value="{{ profile.id }}" {% if prefill.target_profile_id == profile.id %}selected{% endif %}>{{ profile.name }} ({{ profile_type_label(profile.profile_type) }})</option>
+            {% endfor %}
+          </select>
+        </label>
+
+        <label>
+          <span>Подпапка в назначении</span>
+          <input name="target_path" placeholder="backup/2026" value="{{ prefill.target_path }}" />
+        </label>
+
+        <label>
+          <span>Расписание</span>
+          <input name="schedule" value="{{ prefill.schedule }}" placeholder="manual, hourly, daily, weekly или cron:0 6 * * *" />
+        </label>
+
+        <label>
+          <span>Ограничение скорости</span>
+          <input name="bandwidth_limit" placeholder="необязательно, например 8M" value="{{ prefill.bandwidth_limit }}" />
+        </label>
+
+        <label>
+          <span>Фильтры</span>
+          <textarea name="filters" rows="5" placeholder="- *.tmp&#10;+ *.jpg&#10;- *">{{ prefill.filters }}</textarea>
+        </label>
+
+        <label class="checkbox">
+          <input type="checkbox" name="enabled" {% if prefill.enabled %}checked{% endif %} />
+          <span>Включить запуск по расписанию</span>
+        </label>
+
+        <label class="checkbox">
+          <input type="checkbox" name="verify_checksum" {% if prefill.verify_checksum %}checked{% endif %} />
+          <span>Проверять контрольные суммы</span>
+        </label>
+
+        <button class="button" type="submit">Сохранить задачу</button>
+      </form>
+      <p class="note">Примеры расписаний: {{ schedule_examples | join(", ") }}</p>
+    </article>
+
+    <article class="card">
+      <h2>Задачи синхронизации</h2>
+      {% if jobs %}
+        <table>
+          <thead>
+            <tr>
+              <th>Название</th>
+              <th>Маршрут</th>
+              <th>Расписание</th>
+              <th>Режим</th>
+              <th>Действия</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for job in jobs %}
+              <tr>
+                <td>
+                  <strong>{{ job.name }}</strong>
+                  <div class="muted">{{ "включена" if job.enabled else "на паузе" }}</div>
+                </td>
+                <td>
+                  {{ job.source_profile.name if job.source_profile else job.source_profile_id }}
+                  /
+                  {{ job.source_path or "." }}
+                  <br />
+                  <span class="muted">в</span>
+                  {{ job.target_profile.name if job.target_profile else job.target_profile_id }}
+                  /
+                  {{ job.target_path or "." }}
+                </td>
+                <td>{{ describe_schedule(job.schedule) }}</td>
+                <td>{{ job.mode }}</td>
+                <td>
+                  <div class="actions">
+                    <form method="post" action="/jobs/{{ job.id }}/run">
+                      <button class="button small" type="submit">Запустить</button>
+                    </form>
+                    {% if job.enabled %}
+                      <form method="post" action="/jobs/{{ job.id }}/pause">
+                        <button class="button secondary small" type="submit">Пауза</button>
+                      </form>
+                    {% else %}
+                      <form method="post" action="/jobs/{{ job.id }}/resume">
+                        <button class="button secondary small" type="submit">Возобновить</button>
+                      </form>
+                    {% endif %}
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p class="empty-state">Задач пока нет. Сначала создайте профили, затем настройте однонаправленную задачу `copy`.</p>
+      {% endif %}
+    </article>
+  </section>
+
+  <section class="card">
+    <div class="section-header">
+      <h2>Типовые маршруты</h2>
+      <span class="note">Быстрый старт для первой задачи</span>
+    </div>
+    {% if job_templates %}
+      <table>
+        <thead>
+          <tr>
+            <th>Шаблон</th>
+            <th>Источник</th>
+            <th>Назначение</th>
+            <th>Описание</th>
+            <th>Действие</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in job_templates %}
+            <tr>
+              <td>{{ item.title }}</td>
+              <td>{{ item.source_name }}</td>
+              <td>{{ item.target_name }}</td>
+              <td>{{ item.description }}</td>
+              <td>
+                <form method="get" action="/jobs">
+                  {% for key, value in item.params.items() %}
+                    <input type="hidden" name="{{ key }}" value="{{ value }}" />
+                  {% endfor %}
+                  <button class="button secondary small" type="submit">Подставить в форму</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="empty-state">Шаблоны появятся автоматически, когда будет хотя бы два профиля: источник и назначение.</p>
+    {% endif %}
+  </section>
+{% endblock %}

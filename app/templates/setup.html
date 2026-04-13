@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="grid two align-start">
+    <article class="card">
+      <h2>Чеклист подготовки</h2>
+      <dl class="key-value">
+        <div><dt>rclone установлен</dt><dd>{{ "да" if diagnostics.rclone_available else "нет" }}</dd></div>
+        <div><dt>Настроенные remote</dt><dd>{{ diagnostics.remotes | length }}</dd></div>
+        <div><dt>Найденные iCloud пути</dt><dd>{{ diagnostics.local_candidates["icloud"] | length }}</dd></div>
+        <div><dt>Найденные Google Drive пути</dt><dd>{{ diagnostics.local_candidates["google_drive"] | length }}</dd></div>
+        <div><dt>Смонтированные тома</dt><dd>{{ diagnostics.local_candidates["mounted_volumes"] | length }}</dd></div>
+      </dl>
+      {% if diagnostics.issues %}
+        <h3>Что еще не готово</h3>
+        <ul class="plain-list">
+          {% for issue in diagnostics.issues %}
+            <li>{{ issue }}</li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="empty-state">Все нужное для первой задачи уже видно из приложения.</p>
+      {% endif %}
+    </article>
+
+    <article class="card">
+      <h2>Следующие шаги</h2>
+      <ol class="plain-list">
+        <li>Настройте remote-подключения `rclone` для Яндекс Диска и S3 через `rclone config`.</li>
+        <li>Создайте профили хранилищ в приложении, используя remote-имена или локальные пути ниже.</li>
+        <li>Создайте однонаправленную задачу `copy` и сначала запустите ее вручную.</li>
+      </ol>
+      <p class="note">Используйте точные имена remote без ручного редактирования SQLite.</p>
+    </article>
+  </section>
+
+  <section class="grid two align-start">
+    <article class="card">
+      <h2>Найденные remote</h2>
+      {% if diagnostics.remotes %}
+        <ul class="plain-list">
+          {% for remote in diagnostics.remotes %}
+            <li><code>{{ remote }}:</code></li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="empty-state">Remote-подключения `rclone` пока не найдены.</p>
+      {% endif %}
+
+      <h3>Команды для настройки</h3>
+      <pre>rclone config
+
+# После настройки ожидаются remote-имена наподобие:
+yadisk:
+s3home:</pre>
+    </article>
+
+    <article class="card">
+      <h2>Найденные локальные пути</h2>
+
+      <h3>iCloud Drive</h3>
+      {% if diagnostics.local_candidates["icloud"] %}
+        <ul class="plain-list">
+          {% for path in diagnostics.local_candidates["icloud"] %}
+            <li><code>{{ path }}</code></li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="empty-state">Путь к iCloud Drive не найден.</p>
+      {% endif %}
+
+      <h3>Google Drive</h3>
+      {% if diagnostics.local_candidates["google_drive"] %}
+        <ul class="plain-list">
+          {% for path in diagnostics.local_candidates["google_drive"] %}
+            <li><code>{{ path }}</code></li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="empty-state">Папка Google Drive for Desktop не найдена.</p>
+      {% endif %}
+
+      <h3>Смонтированные тома / NAS-шары</h3>
+      {% if diagnostics.local_candidates["mounted_volumes"] %}
+        <ul class="plain-list">
+          {% for path in diagnostics.local_candidates["mounted_volumes"] %}
+            <li><code>{{ path }}</code></li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="empty-state">В <code>/Volumes</code> не найдены смонтированные внешние тома.</p>
+      {% endif %}
+    </article>
+  </section>
+
+  <section class="card">
+    <div class="section-header">
+      <h2>Быстрый переход к созданию профилей</h2>
+      <a class="button secondary" href="/profiles">Открыть форму профиля</a>
+    </div>
+    {% if suggestions %}
+      <table>
+        <thead>
+          <tr>
+            <th>Рекомендуемое имя</th>
+            <th>Тип</th>
+            <th>Путь / remote</th>
+            <th>Комментарий</th>
+            <th>Действие</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in suggestions %}
+            <tr>
+              <td>{{ item.name }}</td>
+              <td>{{ profile_type_label(item.profile_type) }}</td>
+              <td><code>{{ item.path }}</code></td>
+              <td>{{ item.description }}</td>
+              <td>
+                <form method="get" action="/profiles">
+                  <input type="hidden" name="suggested_name" value="{{ item.name }}" />
+                  <input type="hidden" name="suggested_type" value="{{ item.profile_type }}" />
+                  <input type="hidden" name="suggested_root" value="{{ item.path }}" />
+                  <button class="button secondary small" type="submit">Подставить в форму</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="empty-state">Пока нечего предлагать автоматически. Сначала настройте remote или подключите локальные источники.</p>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <div class="section-header">
+      <h2>Шаблоны первых задач</h2>
+      <a class="button secondary" href="/jobs">Открыть форму задач</a>
+    </div>
+    {% if job_templates %}
+      <table>
+        <thead>
+          <tr>
+            <th>Шаблон</th>
+            <th>Маршрут</th>
+            <th>Описание</th>
+            <th>Действие</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in job_templates %}
+            <tr>
+              <td>{{ item.title }}</td>
+              <td>{{ item.source_name }} -> {{ item.target_name }}</td>
+              <td>{{ item.description }}</td>
+              <td>
+                <form method="get" action="/jobs">
+                  {% for key, value in item.params.items() %}
+                    <input type="hidden" name="{{ key }}" value="{{ value }}" />
+                  {% endfor %}
+                  <button class="button secondary small" type="submit">Открыть шаблон</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% elif profiles_count > 0 %}
+      <p class="empty-state">Создайте еще хотя бы один профиль, и приложение предложит типовые маршруты для задач.</p>
+    {% else %}
+      <p class="empty-state">Сначала создайте профили хранилищ, и здесь появятся готовые шаблоны задач.</p>
+    {% endif %}
+  </section>
+{% endblock %}

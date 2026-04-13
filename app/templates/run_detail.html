@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="card">
+    <div class="section-header">
+      <h2>Запуск #{{ run.id }}</h2>
+      <span class="badge badge-{{ run.status }}">{{ status_label(run.status) }}</span>
+    </div>
+
+    <dl class="key-value">
+      <div><dt>ID задачи</dt><dd>{{ run.job_id }}</dd></div>
+      <div><dt>Старт</dt><dd>{{ run.started_at }}</dd></div>
+      <div><dt>Завершение</dt><dd>{{ run.finished_at or "-" }}</dd></div>
+      <div><dt>Перенесено</dt><dd>{{ run.files_transferred }} файлов / {{ run.bytes_transferred }} байт</dd></div>
+      <div><dt>Лог-файл</dt><dd>{{ run.log_path or "-" }}</dd></div>
+    </dl>
+
+    <h3>Итог</h3>
+    <pre>{{ run.summary }}</pre>
+
+    <h3>Команда</h3>
+    <pre>{{ run.command_preview or "-" }}</pre>
+
+    <h3>stdout</h3>
+    <pre>{{ run.stdout or "-" }}</pre>
+
+    <h3>stderr</h3>
+    <pre>{{ run.stderr or "-" }}</pre>
+  </section>
+{% endblock %}

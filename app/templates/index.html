@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="grid three">
+    <article class="card metric">
+      <span>Профили</span>
+      <strong>{{ stats.profiles_count }}</strong>
+    </article>
+    <article class="card metric">
+      <span>Задачи</span>
+      <strong>{{ stats.jobs_count }}</strong>
+    </article>
+    <article class="card metric">
+      <span>Запуски</span>
+      <strong>{{ stats.runs_count }}</strong>
+    </article>
+    <article class="card metric">
+      <span>Remote rclone</span>
+      <strong>{{ diagnostics.remotes | length }}</strong>
+    </article>
+  </section>
+
+  <section class="grid two">
+    <article class="card">
+      <h2>Состояние сервиса</h2>
+      <dl class="key-value">
+        <div><dt>Планировщик</dt><dd>{{ "работает" if stats.scheduler_running else "остановлен" }}</dd></div>
+        <div><dt>rclone</dt><dd>{{ "доступен" if stats.rclone_available else "не найден" }}</dd></div>
+        <div><dt>Активные задачи</dt><dd>{{ stats.active_jobs }}</dd></div>
+      </dl>
+    </article>
+
+    <article class="card">
+      <h2>Ограничения MVP</h2>
+      <ul class="plain-list">
+        <li>Только однонаправленный режим `copy`</li>
+        <li>Без автоматических удалений в целевом хранилище</li>
+        <li>Одновременно выполняется только одна задача</li>
+        <li>S3 и Яндекс Диск используют заранее настроенные remote-подключения rclone</li>
+      </ul>
+    </article>
+  </section>
+
+  <section class="grid two">
+    <article class="card">
+      <div class="section-header">
+        <h2>Готовность к настройке</h2>
+        <a class="button secondary" href="/setup">Открыть мастер подготовки</a>
+      </div>
+      {% if diagnostics.issues %}
+        <ul class="plain-list">
+          {% for issue in diagnostics.issues %}
+            <li>{{ issue }}</li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="empty-state">Базовые условия готовы. Можно создавать первый профиль и первую задачу.</p>
+      {% endif %}
+    </article>
+
+    <article class="card">
+      <h2>Найденные локальные источники</h2>
+      <dl class="key-value">
+        <div><dt>iCloud</dt><dd>{{ diagnostics.local_candidates["icloud"] | length }}</dd></div>
+        <div><dt>Google Drive</dt><dd>{{ diagnostics.local_candidates["google_drive"] | length }}</dd></div>
+        <div><dt>Смонтированные тома</dt><dd>{{ diagnostics.local_candidates["mounted_volumes"] | length }}</dd></div>
+      </dl>
+    </article>
+  </section>
+
+  <section class="card">
+    <div class="section-header">
+      <h2>Последние запуски</h2>
+      <a class="button secondary" href="/runs">Открыть историю</a>
+    </div>
+    {% if recent_runs %}
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Задача</th>
+            <th>Статус</th>
+            <th>Старт</th>
+            <th>Итог</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for run in recent_runs %}
+            <tr>
+              <td><a href="/runs/{{ run.id }}">#{{ run.id }}</a></td>
+              <td>{{ run.job.name if run.job else run.job_id }}</td>
+              <td><span class="badge badge-{{ run.status }}">{{ status_label(run.status) }}</span></td>
+              <td>{{ run.started_at }}</td>
+              <td>{{ run.summary }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="empty-state">Запусков синхронизации пока не было.</p>
+    {% endif %}
+  </section>
+{% endblock %}

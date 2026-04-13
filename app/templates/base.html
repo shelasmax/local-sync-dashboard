@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Локальная панель синхронизации</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <header class="shell-header">
+      <div>
+        <p class="eyebrow">Локальный сервис для macOS</p>
+        <h1>Локальная панель синхронизации</h1>
+      </div>
+      <nav>
+        <a href="/">Обзор</a>
+        <a href="/setup">Подготовка</a>
+        <a href="/profiles">Профили</a>
+        <a href="/jobs">Задачи</a>
+        <a href="/runs">Запуски</a>
+        <a href="/health">Статус</a>
+      </nav>
+    </header>
+    <main class="layout">
+      {% block content %}{% endblock %}
+    </main>
+  </body>
+</html>
