@@ -32,6 +32,10 @@ class Settings:
         return self.data_dir / "logs"
 
     @property
+    def runtime_dir(self) -> Path:
+        return self.data_dir / "runtime"
+
+    @property
     def templates_dir(self) -> Path:
         return BASE_DIR / "app" / "templates"
 
@@ -46,6 +50,7 @@ class Settings:
     def ensure_runtime_dirs(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.logs_dir.mkdir(parents=True, exist_ok=True)
+        self.runtime_dir.mkdir(parents=True, exist_ok=True)
 
 
 settings = Settings()

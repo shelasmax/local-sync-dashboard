@@ -115,7 +115,7 @@
                 </td>
                 <td><span class="break-any">{{ profile.secret_ref or "нет" }}</span></td>
                 <td>
-                  <div class="actions">
+                  <div class="actions stack-actions">
                     <form method="get" action="/profiles">
                       <input type="hidden" name="edit_profile_id" value="{{ profile.id }}" />
                       <input type="hidden" name="suggested_name" value="{{ profile.name }}" />

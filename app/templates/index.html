@@ -68,6 +68,31 @@
     </article>
   </section>
 
+  {% if stats.active_runs %}
+    <section class="card">
+      <div class="section-header">
+        <h2>Активные задачи</h2>
+        <a class="button secondary" href="/jobs">Открыть задачи</a>
+      </div>
+      <div class="stack">
+        {% for live in stats.active_runs.values() %}
+          <div class="live-status">
+            <strong>{{ live.job_name or ("Задача #" ~ live.job_id) }}</strong>
+            <div class="live-meta">
+              <span>{{ format_bytes(live.bytes_transferred) }} из {{ format_bytes(live.total_bytes) }}</span>
+              <span>{{ live.progress_percent }}%</span>
+              <span>{{ format_speed(live.speed) }}</span>
+              <span>{{ format_eta(live.eta_seconds) }}</span>
+            </div>
+            <div class="progress-bar" aria-label="Прогресс активной задачи">
+              <span style="width: {{ live.progress_percent }}%;"></span>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+  {% endif %}
+
   <section class="card">
     <div class="section-header">
       <h2>Последние запуски</h2>

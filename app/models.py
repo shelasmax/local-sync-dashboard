@@ -22,6 +22,7 @@ class RunStatus(StrEnum):
     FAILED = "failed"
     CANCELED = "canceled"
     BLOCKED = "blocked"
+    INTERRUPTED = "interrupted"
 
 
 class StorageProfile(Base):
@@ -111,4 +112,3 @@ class AppSettings(Base):
     max_concurrent_runs: Mapped[int] = mapped_column(Integer, default=1)
     default_retry_count: Mapped[int] = mapped_column(Integer, default=1)
     default_run_timeout_seconds: Mapped[int] = mapped_column(Integer, default=60 * 60 * 6)
-

@@ -1,17 +1,64 @@
 {% extends "base.html" %}
 
 {% block content %}
+  {% if active_run and active_run.run_id == run.id %}
+    <script>
+      window.setTimeout(function () {
+        window.location.reload();
+      }, 10000);
+    </script>
+  {% endif %}
+
   <section class="card">
     <div class="section-header">
       <h2>Запуск #{{ run.id }}</h2>
       <span class="badge badge-{{ run.status }}">{{ status_label(run.status) }}</span>
     </div>
 
+    {% if active_run and active_run.run_id == run.id %}
+      <div class="live-status">
+        <div class="live-meta">
+          <span>{{ format_bytes(active_run.bytes_transferred) }} из {{ format_bytes(active_run.total_bytes) }}</span>
+          <span>{{ active_run.progress_percent }}%</span>
+          <span>{{ format_speed(active_run.speed) }}</span>
+          <span>{{ format_eta(active_run.eta_seconds) }}</span>
+        </div>
+        <div class="progress-bar" aria-label="Прогресс активного запуска">
+          <span style="width: {{ active_run.progress_percent }}%;"></span>
+        </div>
+        <div class="live-meta">
+          <span>Файлы: {{ active_run.files_transferred }} / {{ active_run.total_files }}</span>
+          <span>Проверки: {{ active_run.checks }} / {{ active_run.total_checks }}</span>
+          <span>Обновлено: {{ active_run.updated_at }}</span>
+        </div>
+        {% if active_run.active_items %}
+          <div class="transfer-list">
+            {% for item in active_run.active_items %}
+              <div class="transfer-item">
+                <strong>{{ item.name }}</strong>
+                <span>{{ item.percentage }}% · {{ format_speed(item.speed) }}{% if item.eta_seconds is not none %} · {{ format_eta(item.eta_seconds) }}{% endif %}</span>
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </div>
+    {% elif run.status == "interrupted" %}
+      <div class="callout callout-warn">
+        <strong>Запуск был прерван.</strong>
+        <p>Приложение сохранило последний известный прогресс. Повторный запуск выполнит `copy` только для оставшейся дельты.</p>
+        {% if run.job %}
+          <form method="post" action="/jobs/{{ run.job.id }}/run">
+            <button class="button secondary small" type="submit">Повторить задачу</button>
+          </form>
+        {% endif %}
+      </div>
+    {% endif %}
+
     <dl class="key-value">
       <div><dt>ID задачи</dt><dd>{{ run.job_id }}</dd></div>
       <div><dt>Старт</dt><dd>{{ run.started_at }}</dd></div>
       <div><dt>Завершение</dt><dd>{{ run.finished_at or "-" }}</dd></div>
-      <div><dt>Перенесено</dt><dd>{{ run.files_transferred }} файлов / {{ run.bytes_transferred }} байт</dd></div>
+      <div><dt>Перенесено</dt><dd>{{ run.files_transferred }} файлов / {{ format_bytes(run.bytes_transferred) }}</dd></div>
       <div><dt>Лог-файл</dt><dd>{{ run.log_path or "-" }}</dd></div>
     </dl>
 

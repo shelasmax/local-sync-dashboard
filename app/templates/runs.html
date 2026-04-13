@@ -1,13 +1,22 @@
 {% extends "base.html" %}
 
 {% block content %}
+  {% if has_active_runs %}
+    <script>
+      window.setTimeout(function () {
+        window.location.reload();
+      }, 10000);
+    </script>
+  {% endif %}
+
   <section class="card">
     <div class="section-header">
       <h2>История запусков</h2>
-      <span class="note">Сначала новые</span>
+      <span class="note">Сначала новые. Активные задачи обновляются автоматически.</span>
     </div>
     {% if runs %}
-      <table>
+      <div class="table-wrap">
+      <table class="runs-table">
         <thead>
           <tr>
             <th>ID</th>
@@ -17,22 +26,54 @@
             <th>Завершение</th>
             <th>Перенесено</th>
             <th>Итог</th>
+            <th>Recovery</th>
           </tr>
         </thead>
         <tbody>
           {% for run in runs %}
+            {% set live = active_runs.get(run.job_id) %}
             <tr>
               <td><a href="/runs/{{ run.id }}">#{{ run.id }}</a></td>
-              <td>{{ run.job.name if run.job else run.job_id }}</td>
+              <td>
+                <strong>{{ run.job.name if run.job else run.job_id }}</strong>
+                {% if live and live.run_id == run.id %}
+                  <div class="live-status compact">
+                    <div class="live-meta">
+                      <span>{{ format_bytes(live.bytes_transferred) }} из {{ format_bytes(live.total_bytes) }}</span>
+                      <span>{{ live.progress_percent }}%</span>
+                      <span>{{ format_speed(live.speed) }}</span>
+                      <span>{{ format_eta(live.eta_seconds) }}</span>
+                    </div>
+                    <div class="progress-bar" aria-label="Прогресс активного запуска">
+                      <span style="width: {{ live.progress_percent }}%;"></span>
+                    </div>
+                  </div>
+                {% endif %}
+              </td>
               <td><span class="badge badge-{{ run.status }}">{{ status_label(run.status) }}</span></td>
               <td>{{ run.started_at }}</td>
               <td>{{ run.finished_at or "-" }}</td>
-              <td>{{ run.files_transferred }} файлов / {{ run.bytes_transferred }} байт</td>
-              <td>{{ run.summary }}</td>
+              <td>{{ run.files_transferred }} файлов / {{ format_bytes(run.bytes_transferred) }}</td>
+              <td>
+                {{ run.summary }}
+                {% if run.status == "interrupted" %}
+                  <div class="table-note">Можно безопасно повторить задачу: MVP использует `copy`, а не удаление.</div>
+                {% endif %}
+              </td>
+              <td>
+                {% if run.job %}
+                  <form method="post" action="/jobs/{{ run.job.id }}/run">
+                    <button class="button secondary small" type="submit">Повторить с дельты</button>
+                  </form>
+                {% else %}
+                  <span class="muted">—</span>
+                {% endif %}
+              </td>
             </tr>
           {% endfor %}
         </tbody>
       </table>
+      </div>
     {% else %}
       <p class="empty-state">История запусков пока пуста.</p>
     {% endif %}

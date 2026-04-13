@@ -33,6 +33,8 @@
 - Не добавлять destructive behavior в job execution.
 - Не хранить секреты в SQLite или в логах.
 - Для S3/Yandex профилей помнить: UI удобнее, но `rclone remote` должен существовать заранее.
+- Помнить, что cloud-to-cloud сценарии идут через локальный `Mac`, а не напрямую между провайдерами.
+- Для long-running job учитывать два слоя состояния: финальный `RunHistory` и runtime snapshots в `var/runtime/`.
 - Предпочитать маленькие обратимые diff.
 
 ## Important Files
@@ -44,6 +46,8 @@
 - `app/services/rclone.py` — команды `rclone`
 - `app/templates/*.html` — UI
 - `app/static/style.css` — стили
+- `app/static/favicon.svg` — favicon
+- `var/runtime/` — snapshots активных задач для restart-safe recovery
 - `tests/` — текущая unit-проверка
 
 ## Commands
@@ -59,7 +63,7 @@ uvicorn app.main:app --reload
 
 ```bash
 .venv/bin/python -m compileall app tests
-.venv/bin/python -m unittest tests.test_common tests.test_system tests.test_profiles
+.venv/bin/python -m unittest tests.test_common tests.test_system tests.test_profiles tests.test_rclone tests.test_jobs tests.test_runtime_recovery
 ```
 
 ### Useful ops
@@ -72,10 +76,10 @@ rclone lsf "S3 Beget:bucket-name" --max-depth 1
 
 ## Current Priorities
 
-1. Live progress, ETA и progress bar для активных задач
-2. Улучшение UX и диагностики ошибок профилей
-3. Удаление задач и cleanup flows
-4. Более сильная операционная документация
+1. Dry-run preview перед первым большим переносом
+2. Recovery UX для `interrupted` задач и понятный repeat-from-delta flow
+3. Решение по re-attach к живому `rclone` процессу после рестарта
+4. Улучшение UX и диагностики ошибок профилей
 
 ## Definition of Done
 
@@ -85,4 +89,5 @@ rclone lsf "S3 Beget:bucket-name" --max-depth 1
 - UI не ломается на мобильной ширине
 - нет утечки секретов
 - новая логика не делает удалений в источнике или назначении
+- если затронут runtime долгих задач, обновлены docs и учтен сценарий restart/recovery
 - в финальном ответе есть краткая проверка и оставшиеся риски

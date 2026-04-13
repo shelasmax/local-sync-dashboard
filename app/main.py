@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 import json
+from math import isfinite
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
@@ -25,7 +26,7 @@ from app.schemas import (
     SyncJobRead,
 )
 from app.services.common import decode_json
-from app.services.jobs import create_job, init_settings, job_runner
+from app.services.jobs import JobDeleteError, create_job, delete_job, init_settings, job_runner
 from app.services.profiles import (
     ProfileConflictError,
     ProfileInUseError,
@@ -52,6 +53,7 @@ STATUS_LABELS = {
     "failed": "ошибка",
     "canceled": "отменено",
     "blocked": "заблокировано",
+    "interrupted": "прервано",
     "ready": "готов",
     "unreachable": "недоступен",
     "unknown": "неизвестно",
@@ -82,6 +84,44 @@ def profile_type_label(value: str) -> str:
 
 def status_label(value: str) -> str:
     return STATUS_LABELS.get(value, value)
+
+
+def format_bytes(value: int | float | None) -> str:
+    if value in (None, 0):
+        return "0 B"
+    amount = float(value)
+    units = ["B", "KiB", "MiB", "GiB", "TiB"]
+    unit_index = 0
+    while amount >= 1024 and unit_index < len(units) - 1:
+        amount /= 1024
+        unit_index += 1
+    if unit_index == 0:
+        return f"{int(amount)} {units[unit_index]}"
+    return f"{amount:.1f} {units[unit_index]}"
+
+
+def format_speed(value: int | float | None) -> str:
+    if not value or not isfinite(float(value)):
+        return "0 B/s"
+    return f"{format_bytes(float(value))}/s"
+
+
+def format_eta(seconds: int | None) -> str:
+    if seconds is None:
+        return "ETA неизвестно"
+    if seconds <= 0:
+        return "меньше минуты"
+    minutes, _ = divmod(seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    days, hours = divmod(hours, 24)
+    parts: list[str] = []
+    if days:
+        parts.append(f"{days} д")
+    if hours:
+        parts.append(f"{hours} ч")
+    if minutes and len(parts) < 2:
+        parts.append(f"{minutes} мин")
+    return " ".join(parts) if parts else "меньше минуты"
 
 
 def profile_connection_hint(profile: StorageProfile, configured_remotes: set[str]) -> str:
@@ -334,6 +374,9 @@ def index(request: Request, session: Session = Depends(get_session)):
             "recent_runs": recent_runs,
             "diagnostics": diagnostics,
             "status_label": status_label,
+            "format_bytes": format_bytes,
+            "format_speed": format_speed,
+            "format_eta": format_eta,
         },
     )
 
@@ -514,11 +557,12 @@ def delete_profile_html(profile_id: int, session: Session = Depends(get_session)
 
 
 @app.get("/jobs", response_class=HTMLResponse)
-def jobs_page(request: Request, session: Session = Depends(get_session)):
+def jobs_page(request: Request, error: str = "", session: Session = Depends(get_session)):
     profiles = _list_profiles(session)
     jobs = _list_jobs(session)
     schedule_examples = ["manual", "hourly", "daily", "weekly", "cron:0 6 * * *"]
     prefill = prefill_job_payload(request.query_params)
+    active_runs = job_runner.active_run_snapshots()
     return templates.TemplateResponse(
         request=request,
         name="jobs.html",
@@ -531,6 +575,12 @@ def jobs_page(request: Request, session: Session = Depends(get_session)):
             "decode_json": decode_json,
             "profile_type_label": profile_type_label,
             "status_label": status_label,
+            "active_runs": active_runs,
+            "has_active_runs": bool(active_runs),
+            "format_bytes": format_bytes,
+            "format_speed": format_speed,
+            "format_eta": format_eta,
+            "error": error,
             "prefill": prefill,
             "job_templates": suggested_job_templates(profiles),
         },
@@ -599,13 +649,35 @@ def resume_job_html(job_id: int, session: Session = Depends(get_session)):
     return RedirectResponse(url="/jobs", status_code=303)
 
 
+@app.post("/jobs/{job_id}/delete")
+def delete_job_html(job_id: int, session: Session = Depends(get_session)):
+    try:
+        delete_job(session, job_id, job_runner)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except JobDeleteError as exc:
+        query = urlencode({"error": str(exc)})
+        return RedirectResponse(url=f"/jobs?{query}", status_code=303)
+    return RedirectResponse(url="/jobs", status_code=303)
+
+
 @app.get("/runs", response_class=HTMLResponse)
 def runs_page(request: Request, session: Session = Depends(get_session)):
     runs = _list_runs(session)
+    active_runs = job_runner.active_run_snapshots()
     return templates.TemplateResponse(
         request=request,
         name="runs.html",
-        context={"request": request, "runs": runs, "status_label": status_label},
+        context={
+            "request": request,
+            "runs": runs,
+            "active_runs": active_runs,
+            "has_active_runs": bool(active_runs),
+            "status_label": status_label,
+            "format_bytes": format_bytes,
+            "format_speed": format_speed,
+            "format_eta": format_eta,
+        },
     )
 
 
@@ -614,10 +686,20 @@ def run_detail_page(run_id: int, request: Request, session: Session = Depends(ge
     run = session.get(RunHistory, run_id)
     if not run:
         raise HTTPException(status_code=404, detail="Запуск не найден.")
+    active_runs = job_runner.active_run_snapshots()
+    active_run = active_runs.get(run.job_id) if run.job_id else None
     return templates.TemplateResponse(
         request=request,
         name="run_detail.html",
-        context={"request": request, "run": run, "status_label": status_label},
+        context={
+            "request": request,
+            "run": run,
+            "active_run": active_run,
+            "status_label": status_label,
+            "format_bytes": format_bytes,
+            "format_speed": format_speed,
+            "format_eta": format_eta,
+        },
     )
 
 
@@ -689,6 +771,11 @@ def api_list_jobs(session: Session = Depends(get_session)):
     return _list_jobs(session)
 
 
+@app.get("/api/runtime/jobs")
+def api_runtime_jobs():
+    return {"active_runs": job_runner.active_run_snapshots()}
+
+
 @app.post("/api/jobs/{job_id}/run")
 def api_run_job(job_id: int):
     ok, message = job_runner.enqueue_job(job_id, initiated_by="manual")
@@ -717,6 +804,17 @@ def api_resume_job(job_id: int, session: Session = Depends(get_session)):
     job.enabled = True
     session.commit()
     job_runner.sync_job(job_id)
+    return {"ok": True}
+
+
+@app.delete("/api/jobs/{job_id}")
+def api_delete_job(job_id: int, session: Session = Depends(get_session)):
+    try:
+        delete_job(session, job_id, job_runner)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except JobDeleteError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return {"ok": True}
 
 
