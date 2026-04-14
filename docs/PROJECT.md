@@ -141,6 +141,7 @@
 - recovery UX для `interrupted` запусков в `/runs`, `/runs/{id}`, на главной и в `/jobs`
 - cloud-to-cloud предупреждения в `/setup` и при составлении маршрута на `/jobs`
 - pre-run checklist для длинных cloud job при составлении маршрута на `/jobs`
+- встроенный экран `/ops` с runbook по запуску, recovery, `launchd` и backup/restore
 - favicon и базовая чистка адаптивной верстки таблиц
 
 ### Чего пока нет

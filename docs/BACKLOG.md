@@ -99,6 +99,7 @@
 - удаление задач из UI и API с защитой от удаления активного job
 - базовая правка верстки таблиц и favicon
 - cleanup тестового harness: SQLite engine закрывается корректно, без `ResourceWarning`
+- встроенный экран `/ops` с базовым operational runbook
 
 ## Отдельно вне MVP
 

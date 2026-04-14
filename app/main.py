@@ -624,6 +624,22 @@ def setup_page(request: Request, session: Session = Depends(get_session)):
     )
 
 
+@app.get("/ops", response_class=HTMLResponse)
+def ops_page(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="ops.html",
+        context={
+            "request": request,
+            "launchd_plist_path": "launchd/com.localsync.dashboard.plist",
+            "data_dir": str(settings.data_dir),
+            "db_path": str(settings.db_path),
+            "logs_dir": str(settings.logs_dir),
+            "runtime_dir": str(settings.runtime_dir),
+        },
+    )
+
+
 @app.get("/profiles", response_class=HTMLResponse)
 def profiles_page(
     request: Request,
