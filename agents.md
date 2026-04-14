@@ -76,7 +76,7 @@ rclone lsf "S3 Beget:bucket-name" --max-depth 1
 
 ## Current Priorities
 
-1. Решение по re-attach к живому `rclone` процессу после рестарта
+1. Усиление recovery UX вокруг repeat-from-delta и pre-run checklist
 2. Улучшение UX и диагностики ошибок профилей
 3. Более явные cloud-to-cloud подсказки про локальный путь трафика на уровне run и запуска
 4. Операционная документация: recovery, launchd и backup/restore
@@ -84,6 +84,7 @@ rclone lsf "S3 Beget:bucket-name" --max-depth 1
 Примечание:
 - базовая ручная перепроверка профилей и hints уже есть; следующий шаг в этой зоне — сохранять последнюю ошибку проверки и делать диагностику еще богаче.
 - базовые cloud-to-cloud предупреждения уже есть в `/setup` и `/jobs`; дальше нужен более явный UX рядом с запуском и историей run.
+- `re-attach` к живому `rclone` процессу после рестарта не делаем; recovery-модель проекта — повторный `copy` с дельты.
 
 ## Definition of Done
 

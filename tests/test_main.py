@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from app.main import job_transfer_warning
+from app.main import job_pre_run_checklist, job_transfer_warning
 from app.models import ProfileType, StorageProfile
 
 
@@ -37,6 +37,21 @@ class MainHelpersTest(unittest.TestCase):
         target = self.make_profile(ProfileType.SYNOLOGY_SHARE, "/Volumes/nas")
 
         self.assertEqual(job_transfer_warning(source, target), "")
+
+    def test_job_pre_run_checklist_for_remote_route(self):
+        source = self.make_profile(ProfileType.S3_REMOTE, "s3:")
+        target = self.make_profile(ProfileType.YANDEX_REMOTE, "yadisk:")
+
+        checklist = job_pre_run_checklist(source, target)
+
+        self.assertGreaterEqual(len(checklist), 3)
+        self.assertTrue(any("sleep" in item for item in checklist))
+
+    def test_job_pre_run_checklist_for_local_route(self):
+        source = self.make_profile(ProfileType.LOCAL_FOLDER, "/tmp/source")
+        target = self.make_profile(ProfileType.SYNOLOGY_SHARE, "/Volumes/nas")
+
+        self.assertEqual(job_pre_run_checklist(source, target), [])
 
 
 if __name__ == "__main__":

@@ -46,6 +46,16 @@
           <p>{{ transfer_warning }}</p>
         </div>
       {% endif %}
+      {% if pre_run_checklist %}
+        <div class="callout callout-info">
+          <strong>Перед длинным запуском проверьте</strong>
+          <ul class="plain-list">
+            {% for item in pre_run_checklist %}
+              <li>{{ item }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endif %}
       <form method="post" action="/jobs" class="stack">
         <label>
           <span>Название</span>

@@ -187,6 +187,23 @@ def job_transfer_warning(
     return ""
 
 
+def job_pre_run_checklist(
+    source_profile: StorageProfile | None,
+    target_profile: StorageProfile | None,
+) -> list[str]:
+    if not (is_remote_profile(source_profile) or is_remote_profile(target_profile)):
+        return []
+
+    items = [
+        "Запускайте длинные выгрузки тогда, когда Mac не уйдет в sleep.",
+        "Для больших cloud задач лучше использовать ночное окно или другой длинный стабильный интервал.",
+        "Проверьте, что интернет стабилен и на Mac достаточно системных ресурсов.",
+    ]
+    if is_remote_profile(source_profile) and is_remote_profile(target_profile):
+        items.append("Маршрут идет через локальный Mac целиком: объем загрузки и выгрузки проходит через этот компьютер.")
+    return items
+
+
 def suggested_profiles(diagnostics) -> list[dict[str, str]]:
     suggestions: list[dict[str, str]] = []
     for path in diagnostics.local_candidates["icloud"]:
@@ -656,6 +673,7 @@ def jobs_page(request: Request, error: str = "", preview_job_id: int | None = No
     source_profile = indexed_profiles.get(prefill["source_profile_id"]) if prefill["source_profile_id"] else None
     target_profile = indexed_profiles.get(prefill["target_profile_id"]) if prefill["target_profile_id"] else None
     transfer_warning = job_transfer_warning(source_profile, target_profile)
+    pre_run_checklist = job_pre_run_checklist(source_profile, target_profile)
     return templates.TemplateResponse(
         request=request,
         name="jobs.html",
@@ -678,6 +696,7 @@ def jobs_page(request: Request, error: str = "", preview_job_id: int | None = No
             "interrupted_runs": interrupted_runs,
             "prefill": prefill,
             "transfer_warning": transfer_warning,
+            "pre_run_checklist": pre_run_checklist,
             "job_transfer_warning": job_transfer_warning,
             "job_templates": suggested_job_templates(profiles),
         },

@@ -52,7 +52,7 @@
     {% elif run.status == "interrupted" %}
       <div class="callout callout-warn">
         <strong>Запуск был прерван.</strong>
-        <p>Приложение сохранило последний известный прогресс. Повторный запуск выполнит `copy` только для оставшейся дельты.</p>
+        <p>Приложение сохранило последний известный прогресс. Recovery в этом проекте всегда идет через повторный `copy` только для оставшейся дельты; `re-attach` к старому процессу не используется.</p>
         {% if run.job %}
           <form method="post" action="/jobs/{{ run.job.id }}/run">
             <button class="button secondary small" type="submit">Повторить задачу</button>

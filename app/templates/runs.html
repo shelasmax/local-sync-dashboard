@@ -84,7 +84,7 @@
               <td>
                 {{ run.summary }}
                 {% if run.status == "interrupted" %}
-                  <div class="table-note">Можно безопасно повторить задачу: MVP использует `copy`, а не удаление.</div>
+                  <div class="table-note">Можно безопасно повторить задачу: recovery идет через повторный `copy` с дельты, без удаления уже переданных данных.</div>
                 {% endif %}
               </td>
               <td>
