@@ -15,6 +15,13 @@
       <span class="badge badge-{{ run.status }}">{{ status_label(run.status) }}</span>
     </div>
 
+    {% if transfer_warning %}
+      <div class="callout callout-info">
+        <strong>Как шел трафик для этого запуска</strong>
+        <p>{{ transfer_warning }}</p>
+      </div>
+    {% endif %}
+
     {% if active_run and active_run.run_id == run.id %}
       <div class="live-status">
         <div class="live-meta">

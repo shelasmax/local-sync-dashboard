@@ -403,7 +403,10 @@ def _list_jobs(session: Session) -> list[SyncJob]:
 def _list_runs(session: Session, limit: int = 50) -> list[RunHistory]:
     return session.scalars(
         select(RunHistory)
-        .options(selectinload(RunHistory.job))
+        .options(
+            selectinload(RunHistory.job).selectinload(SyncJob.source_profile),
+            selectinload(RunHistory.job).selectinload(SyncJob.target_profile),
+        )
         .order_by(desc(RunHistory.started_at))
         .limit(limit)
     ).all()
@@ -412,7 +415,10 @@ def _list_runs(session: Session, limit: int = 50) -> list[RunHistory]:
 def _list_interrupted_runs(session: Session, limit: int = 5) -> list[RunHistory]:
     return session.scalars(
         select(RunHistory)
-        .options(selectinload(RunHistory.job))
+        .options(
+            selectinload(RunHistory.job).selectinload(SyncJob.source_profile),
+            selectinload(RunHistory.job).selectinload(SyncJob.target_profile),
+        )
         .where(RunHistory.status == "interrupted")
         .order_by(desc(RunHistory.started_at))
         .limit(limit)
@@ -788,6 +794,7 @@ def runs_page(request: Request, error: str = "", session: Session = Depends(get_
             "format_bytes": format_bytes,
             "format_speed": format_speed,
             "format_eta": format_eta,
+            "job_transfer_warning": job_transfer_warning,
             "error": error,
         },
     )
@@ -811,6 +818,10 @@ def run_detail_page(run_id: int, request: Request, session: Session = Depends(ge
             "format_bytes": format_bytes,
             "format_speed": format_speed,
             "format_eta": format_eta,
+            "transfer_warning": job_transfer_warning(
+                run.job.source_profile if run.job else None,
+                run.job.target_profile if run.job else None,
+            ),
         },
     )
 

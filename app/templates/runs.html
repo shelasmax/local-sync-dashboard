@@ -57,6 +57,12 @@
               <td><a href="/runs/{{ run.id }}">#{{ run.id }}</a></td>
               <td>
                 <strong>{{ run.job.name if run.job else run.job_id }}</strong>
+                {% if run.job %}
+                  {% set transfer_warning = job_transfer_warning(run.job.source_profile, run.job.target_profile) %}
+                  {% if transfer_warning %}
+                    <div class="table-note">{{ transfer_warning }}</div>
+                  {% endif %}
+                {% endif %}
                 {% if live and live.run_id == run.id %}
                   <div class="live-status compact">
                     <div class="live-meta">
