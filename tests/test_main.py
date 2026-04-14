@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from app.main import job_pre_run_checklist, job_transfer_warning
+from app.main import job_pre_run_checklist, job_transfer_warning, profile_diagnostic_hints
 from app.models import ProfileType, StorageProfile
 
 
@@ -52,6 +52,24 @@ class MainHelpersTest(unittest.TestCase):
         target = self.make_profile(ProfileType.SYNOLOGY_SHARE, "/Volumes/nas")
 
         self.assertEqual(job_pre_run_checklist(source, target), [])
+
+    def test_profile_diagnostic_hints_for_missing_s3_remote(self):
+        profile = self.make_profile(ProfileType.S3_REMOTE, "missingremote:bucket")
+        profile.status = "unreachable"
+        profile.options_json = '{"endpoint":"https://s3.example.com","_diagnostics":{"message":"remote not found"}}'
+
+        hints = profile_diagnostic_hints(profile, configured_remotes={"yadisk"})
+
+        self.assertTrue(any("rclone remote" in item for item in hints))
+
+    def test_profile_diagnostic_hints_for_yandex_auth_problem(self):
+        profile = self.make_profile(ProfileType.YANDEX_REMOTE, "yadisk:")
+        profile.status = "unreachable"
+        profile.options_json = '{"_diagnostics":{"message":"401 Unauthorized"}}'
+
+        hints = profile_diagnostic_hints(profile, configured_remotes={"yadisk"})
+
+        self.assertTrue(any("OAuth" in item or "переподключ" in item for item in hints))
 
 
 if __name__ == "__main__":

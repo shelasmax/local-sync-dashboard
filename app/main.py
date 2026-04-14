@@ -293,6 +293,56 @@ def profile_last_check(profile: StorageProfile) -> dict[str, Any]:
     return diagnostics_from_options(deserialize_profile_options(profile))
 
 
+def profile_diagnostic_hints(profile: StorageProfile, configured_remotes: set[str]) -> list[str]:
+    hints: list[str] = []
+    last_check = profile_last_check(profile)
+    message = str(last_check.get("message", "")).lower()
+    options = deserialize_profile_options(profile)
+
+    if profile.profile_type in {ProfileType.LOCAL_FOLDER.value, ProfileType.SYNOLOGY_SHARE.value}:
+        candidate = Path(profile.root_path_or_remote).expanduser()
+        if not candidate.exists():
+            hints.append("Проверьте, что путь существует и том или папка действительно смонтированы на этом Mac.")
+        elif not candidate.is_dir():
+            hints.append("Укажите именно директорию, а не отдельный файл.")
+        elif "permission" in message or "access" in message:
+            hints.append("Проверьте права доступа к каталогу для текущего пользователя macOS.")
+        elif profile.status != "ready":
+            hints.append("Если это NAS-шара, убедитесь, что она не отвалилась из `/Volumes` после sleep или переподключения сети.")
+        return hints
+
+    remote_name, _, bucket = split_s3_remote_root(profile.root_path_or_remote)
+    if remote_name and remote_name not in configured_remotes:
+        hints.append(f"Сначала создайте или исправьте `rclone remote` `{remote_name}:` через `rclone config`.")
+
+    if "unauthorized" in message or "401" in message or "403" in message or "access denied" in message:
+        if profile.profile_type == ProfileType.YANDEX_REMOTE.value:
+            hints.append("Похоже на проблему авторизации Яндекс Диска: переподключите remote через `rclone config reconnect` или заново выполните OAuth.")
+        else:
+            hints.append("Похоже на проблему доступа к S3: проверьте `access_key`, `secret_key`, права на bucket и политику доступа.")
+
+    if "timeout" in message or "tls" in message or "connection" in message or "no such host" in message:
+        hints.append("Похоже на сетевую ошибку: проверьте интернет, DNS, VPN и доступность endpoint.")
+
+    if profile.profile_type == ProfileType.S3_REMOTE.value:
+        endpoint = str(options.get("endpoint", "")).strip()
+        region = str(options.get("region", "")).strip()
+        if not endpoint:
+            hints.append("Для S3-compatible хранилищ обычно нужен явный `endpoint` в настройках профиля.")
+        if not region:
+            hints.append("Если провайдер требует регион, заполните поле `region`, даже если bucket уже указан.")
+        if "bucket" in message or "not found" in message:
+            hints.append(f"Проверьте имя bucket и prefix в remote-пути. Сейчас указан bucket: `{bucket or 'не задан'}`.")
+    elif profile.profile_type == ProfileType.YANDEX_REMOTE.value and profile.status != "ready":
+        hints.append("Для Яндекс Диска обычно достаточно одного рабочего remote; если remote найден, чаще всего помогает переподключение OAuth.")
+
+    unique_hints: list[str] = []
+    for hint in hints:
+        if hint not in unique_hints:
+            unique_hints.append(hint)
+    return unique_hints
+
+
 def normalize_profile_form_inputs(
     *,
     profile_type: str,
@@ -520,6 +570,7 @@ def profiles_page(
             "status_label": status_label,
             "profile_connection_hint": profile_connection_hint,
             "profile_last_check": profile_last_check,
+            "profile_diagnostic_hints": profile_diagnostic_hints,
             "configured_remotes": configured_remotes,
             "prefill": build_profile_prefill(
                 suggested_name=suggested_name,

@@ -116,12 +116,23 @@
                   <span class="badge badge-{{ profile.status }}">{{ status_label(profile.status) }}</span>
                   {% set hint = profile_connection_hint(profile, configured_remotes) %}
                   {% set last_check = profile_last_check(profile) %}
+                  {% set diagnostic_hints = profile_diagnostic_hints(profile, configured_remotes) %}
                   {% if hint %}
                     <div class="table-note">{{ hint }}</div>
                   {% endif %}
                   {% if last_check.message %}
                     <div class="table-note">
                       <strong>Последняя проверка:</strong> {{ last_check.message }}
+                    </div>
+                  {% endif %}
+                  {% if diagnostic_hints %}
+                    <div class="table-note">
+                      <strong>Что проверить:</strong>
+                      <ul class="plain-list compact-list">
+                        {% for item in diagnostic_hints %}
+                          <li>{{ item }}</li>
+                        {% endfor %}
+                      </ul>
                     </div>
                   {% endif %}
                   {% if last_check.command_preview %}
