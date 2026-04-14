@@ -29,6 +29,19 @@ a {
   color: inherit;
 }
 
+.icon-sprite,
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .shell-header {
   display: flex;
   justify-content: space-between;
@@ -42,6 +55,20 @@ a {
   margin: 4px 0 0;
   font-size: clamp(2rem, 4vw, 3.4rem);
   line-height: 1;
+}
+
+.brand-title {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.brand-logo {
+  width: clamp(54px, 6vw, 72px);
+  height: clamp(54px, 6vw, 72px);
+  flex: 0 0 auto;
+  border-radius: 18px;
+  box-shadow: 0 12px 28px rgba(47, 111, 99, 0.18);
 }
 
 .eyebrow {
@@ -212,6 +239,37 @@ textarea {
   padding: 6px 12px;
   min-width: 0;
   font-size: 0.88rem;
+}
+
+.icon-button {
+  width: 42px;
+  min-width: 42px;
+  height: 42px;
+  padding: 0;
+  border-radius: 999px;
+}
+
+.button.small.icon-button {
+  width: 38px;
+  min-width: 38px;
+  height: 38px;
+}
+
+.button.tiny.icon-button {
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+}
+
+.button-icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+
+.button.tiny .button-icon {
+  width: 15px;
+  height: 15px;
 }
 
 .section-header {
@@ -802,6 +860,15 @@ pre {
 
   .layout {
     padding: 18px;
+  }
+
+  .brand-title {
+    align-items: flex-start;
+  }
+
+  .brand-logo {
+    width: 48px;
+    height: 48px;
   }
 
   .grid.two,

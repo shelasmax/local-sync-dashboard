@@ -13,7 +13,10 @@
     <section class="card">
       <div class="section-header">
         <h2>Нужно восстановить</h2>
-        <a class="button secondary" href="/runs">История запусков</a>
+        <a class="button secondary icon-button" href="/runs" title="История запусков" aria-label="История запусков">
+          <svg class="button-icon" aria-hidden="true"><use href="#icon-history"></use></svg>
+          <span class="sr-only">История запусков</span>
+        </a>
       </div>
       <div class="stack">
         {% for run in interrupted_runs %}
@@ -26,10 +29,16 @@
               {% endfor %}
             </ul>
             <div class="actions">
-              <a class="button secondary small" href="/runs/{{ run.id }}">Детали</a>
+              <a class="button secondary small icon-button" href="/runs/{{ run.id }}" title="Детали запуска" aria-label="Детали запуска">
+                <svg class="button-icon" aria-hidden="true"><use href="#icon-eye"></use></svg>
+                <span class="sr-only">Детали</span>
+              </a>
               {% if run.job %}
                 <form method="post" action="/runs/{{ run.id }}/retry">
-                  <button class="button secondary small" type="submit">Повторить с дельты</button>
+                  <button class="button secondary small icon-button" type="submit" title="Повторить с дельты" aria-label="Повторить с дельты">
+                    <svg class="button-icon" aria-hidden="true"><use href="#icon-repeat"></use></svg>
+                    <span class="sr-only">Повторить с дельты</span>
+                  </button>
                 </form>
               {% endif %}
             </div>
@@ -127,7 +136,10 @@
             <span>Проверять контрольные суммы</span>
           </label>
 
-          <button class="button" type="submit">Сохранить задачу</button>
+          <button class="button icon-button" type="submit" title="Сохранить задачу" aria-label="Сохранить задачу">
+            <svg class="button-icon" aria-hidden="true"><use href="#icon-save"></use></svg>
+            <span class="sr-only">Сохранить задачу</span>
+          </button>
         </form>
         <p class="note">Примеры расписаний: {{ schedule_examples | join(", ") }}</p>
       </div>
@@ -136,7 +148,7 @@
     <article class="card">
       <div class="section-header">
         <h2>Задачи синхронизации</h2>
-        <span class="note">Список ниже держим главным экраном, а создание новой задачи спрятано в блок выше.</span>
+        <span class="note">Маршрут, режим и действия читаются в одной плоскости, а создание новой задачи не давит на список.</span>
       </div>
       {% if jobs %}
         <div class="entity-list">
@@ -221,31 +233,52 @@
                     {% endif %}
                     <div class="actions job-actions">
                       {% if needs_manual_start_checklist %}
-                        <a class="button small" href="/jobs/{{ job.id }}/start">Checklist и запуск</a>
+                        <a class="button small icon-button" href="/jobs/{{ job.id }}/start" title="Checklist и запуск" aria-label="Checklist и запуск">
+                          <svg class="button-icon" aria-hidden="true"><use href="#icon-check"></use></svg>
+                          <span class="sr-only">Checklist и запуск</span>
+                        </a>
                       {% else %}
                         <form method="post" action="/jobs/{{ job.id }}/run">
-                          <button class="button small" type="submit">Запустить</button>
+                          <button class="button small icon-button" type="submit" title="Запустить" aria-label="Запустить">
+                            <svg class="button-icon" aria-hidden="true"><use href="#icon-play"></use></svg>
+                            <span class="sr-only">Запустить</span>
+                          </button>
                         </form>
                       {% endif %}
                       <form method="post" action="/jobs/{{ job.id }}/preview">
-                        <button class="button secondary small" type="submit">Dry-run</button>
+                        <button class="button secondary small icon-button" type="submit" title="Dry-run" aria-label="Dry-run">
+                          <svg class="button-icon" aria-hidden="true"><use href="#icon-eye"></use></svg>
+                          <span class="sr-only">Dry-run</span>
+                        </button>
                       </form>
                       {% if live %}
                         <form method="post" action="/jobs/{{ job.id }}/pause">
-                          <button class="button secondary small" type="submit">Остановить</button>
+                          <button class="button secondary small icon-button" type="submit" title="Остановить" aria-label="Остановить">
+                            <svg class="button-icon" aria-hidden="true"><use href="#icon-pause"></use></svg>
+                            <span class="sr-only">Остановить</span>
+                          </button>
                         </form>
                       {% elif job.enabled %}
                         <form method="post" action="/jobs/{{ job.id }}/pause">
-                          <button class="button secondary small" type="submit">Пауза</button>
+                          <button class="button secondary small icon-button" type="submit" title="Пауза" aria-label="Пауза">
+                            <svg class="button-icon" aria-hidden="true"><use href="#icon-pause"></use></svg>
+                            <span class="sr-only">Пауза</span>
+                          </button>
                         </form>
                       {% else %}
                         <form method="post" action="/jobs/{{ job.id }}/resume">
-                          <button class="button secondary small" type="submit">Возобновить</button>
+                          <button class="button secondary small icon-button" type="submit" title="Возобновить" aria-label="Возобновить">
+                            <svg class="button-icon" aria-hidden="true"><use href="#icon-repeat"></use></svg>
+                            <span class="sr-only">Возобновить</span>
+                          </button>
                         </form>
                       {% endif %}
                       {% if not live %}
                         <form method="post" action="/jobs/{{ job.id }}/delete">
-                          <button class="button secondary small" type="submit">Удалить</button>
+                          <button class="button secondary small icon-button" type="submit" title="Удалить" aria-label="Удалить">
+                            <svg class="button-icon" aria-hidden="true"><use href="#icon-trash"></use></svg>
+                            <span class="sr-only">Удалить</span>
+                          </button>
                         </form>
                       {% endif %}
                     </div>
@@ -269,7 +302,10 @@
       <div class="section-header">
         <h2>Dry-run preview: {{ preview.job_name }}</h2>
         <form method="get" action="/jobs">
-          <button class="button secondary small" type="submit">Скрыть preview</button>
+          <button class="button secondary small icon-button" type="submit" title="Скрыть preview" aria-label="Скрыть preview">
+            <svg class="button-icon" aria-hidden="true"><use href="#icon-back"></use></svg>
+            <span class="sr-only">Скрыть preview</span>
+          </button>
         </form>
       </div>
       {% if preview_transfer_warning %}
@@ -347,7 +383,10 @@
                   {% for key, value in item.params.items() %}
                     <input type="hidden" name="{{ key }}" value="{{ value }}" />
                   {% endfor %}
-                  <button class="button secondary small" type="submit">Подставить в форму</button>
+                  <button class="button secondary small icon-button" type="submit" title="Подставить в форму" aria-label="Подставить в форму">
+                    <svg class="button-icon" aria-hidden="true"><use href="#icon-template"></use></svg>
+                    <span class="sr-only">Подставить в форму</span>
+                  </button>
                 </form>
               </td>
             </tr>

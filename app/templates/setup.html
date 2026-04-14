@@ -106,7 +106,10 @@ s3home:</pre>
   <section class="card">
     <div class="section-header">
       <h2>Быстрый переход к созданию профилей</h2>
-      <a class="button secondary" href="/profiles">Открыть форму профиля</a>
+      <a class="button secondary icon-button" href="/profiles" title="Открыть форму профиля" aria-label="Открыть форму профиля">
+        <svg class="button-icon" aria-hidden="true"><use href="#icon-plus"></use></svg>
+        <span class="sr-only">Открыть форму профиля</span>
+      </a>
     </div>
     {% if suggestions %}
       <div class="table-wrap">
@@ -132,7 +135,10 @@ s3home:</pre>
                   <input type="hidden" name="suggested_name" value="{{ item.name }}" />
                   <input type="hidden" name="suggested_type" value="{{ item.profile_type }}" />
                   <input type="hidden" name="suggested_root" value="{{ item.path }}" />
-                  <button class="button secondary small" type="submit">Подставить в форму</button>
+                  <button class="button secondary small icon-button" type="submit" title="Подставить в форму" aria-label="Подставить в форму">
+                    <svg class="button-icon" aria-hidden="true"><use href="#icon-template"></use></svg>
+                    <span class="sr-only">Подставить в форму</span>
+                  </button>
                 </form>
               </td>
             </tr>
@@ -148,7 +154,10 @@ s3home:</pre>
   <section class="card">
     <div class="section-header">
       <h2>Шаблоны первых задач</h2>
-      <a class="button secondary" href="/jobs">Открыть форму задач</a>
+      <a class="button secondary icon-button" href="/jobs" title="Открыть форму задач" aria-label="Открыть форму задач">
+        <svg class="button-icon" aria-hidden="true"><use href="#icon-plus"></use></svg>
+        <span class="sr-only">Открыть форму задач</span>
+      </a>
     </div>
     {% if job_templates %}
       <div class="table-wrap">
@@ -172,7 +181,10 @@ s3home:</pre>
                   {% for key, value in item.params.items() %}
                     <input type="hidden" name="{{ key }}" value="{{ value }}" />
                   {% endfor %}
-                  <button class="button secondary small" type="submit">Открыть шаблон</button>
+                  <button class="button secondary small icon-button" type="submit" title="Открыть шаблон" aria-label="Открыть шаблон">
+                    <svg class="button-icon" aria-hidden="true"><use href="#icon-template"></use></svg>
+                    <span class="sr-only">Открыть шаблон</span>
+                  </button>
                 </form>
               </td>
             </tr>

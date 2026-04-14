@@ -61,13 +61,22 @@
         {% if run.job %}
           <div class="actions recovery-actions">
             {% if job_requires_manual_start_checklist(run.job) %}
-              <a class="button secondary small" href="/jobs/{{ run.job.id }}/start">Открыть checklist перед повтором</a>
+              <a class="button secondary small icon-button" href="/jobs/{{ run.job.id }}/start" title="Открыть checklist перед повтором" aria-label="Открыть checklist перед повтором">
+                <svg class="button-icon" aria-hidden="true"><use href="#icon-check"></use></svg>
+                <span class="sr-only">Открыть checklist перед повтором</span>
+              </a>
             {% else %}
               <form method="post" action="/jobs/{{ run.job.id }}/run">
-                <button class="button secondary small" type="submit">Повторить задачу</button>
+                <button class="button secondary small icon-button" type="submit" title="Повторить задачу" aria-label="Повторить задачу">
+                  <svg class="button-icon" aria-hidden="true"><use href="#icon-repeat"></use></svg>
+                  <span class="sr-only">Повторить задачу</span>
+                </button>
               </form>
             {% endif %}
-            <a class="button secondary small" href="/runs">Назад к истории</a>
+            <a class="button secondary small icon-button" href="/runs" title="Назад к истории" aria-label="Назад к истории">
+              <svg class="button-icon" aria-hidden="true"><use href="#icon-back"></use></svg>
+              <span class="sr-only">Назад к истории</span>
+            </a>
           </div>
         {% endif %}
       </div>

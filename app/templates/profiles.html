@@ -89,9 +89,15 @@
           </label>
 
           <div class="actions">
-            <button class="button" type="submit">{{ "Сохранить изменения" if prefill.id else "Сохранить профиль" }}</button>
+            <button class="button icon-button" type="submit" title="{{ 'Сохранить изменения' if prefill.id else 'Сохранить профиль' }}" aria-label="{{ 'Сохранить изменения' if prefill.id else 'Сохранить профиль' }}">
+              <svg class="button-icon" aria-hidden="true"><use href="#icon-save"></use></svg>
+              <span class="sr-only">{{ "Сохранить изменения" if prefill.id else "Сохранить профиль" }}</span>
+            </button>
             {% if prefill.id %}
-              <a class="button secondary" href="/profiles">Отменить</a>
+              <a class="button secondary icon-button" href="/profiles" title="Отменить редактирование" aria-label="Отменить редактирование">
+                <svg class="button-icon" aria-hidden="true"><use href="#icon-back"></use></svg>
+                <span class="sr-only">Отменить</span>
+              </a>
             {% endif %}
           </div>
         </form>
@@ -102,7 +108,7 @@
     <article class="card">
       <div class="section-header">
         <h2>Профили хранилищ</h2>
-        <span class="note">Список ниже сделан горизонтальными блоками по аналогии с запусками.</span>
+        <span class="note">Проверка, правка и удаление теперь собраны в спокойный горизонтальный ритм без табличного сжатия.</span>
       </div>
       {% if profiles %}
         <div class="entity-list">
@@ -150,10 +156,16 @@
                       <div class="inline-actions">
                         {% for action in diagnostic_actions %}
                           {% if action.kind == "link" %}
-                            <a class="button secondary tiny" href="{{ action.href }}">{{ action.label }}</a>
+                            <a class="button secondary tiny icon-button" href="{{ action.href }}" title="{{ action.label }}" aria-label="{{ action.label }}">
+                              <svg class="button-icon" aria-hidden="true"><use href="#icon-wand"></use></svg>
+                              <span class="sr-only">{{ action.label }}</span>
+                            </a>
                           {% elif action.kind == "check" %}
                             <form method="post" action="/profiles/{{ profile.id }}/check">
-                              <button class="button secondary tiny" type="submit">{{ action.label }}</button>
+                              <button class="button secondary tiny icon-button" type="submit" title="{{ action.label }}" aria-label="{{ action.label }}">
+                                <svg class="button-icon" aria-hidden="true"><use href="#icon-check"></use></svg>
+                                <span class="sr-only">{{ action.label }}</span>
+                              </button>
                             </form>
                           {% endif %}
                         {% endfor %}
@@ -172,7 +184,10 @@
                   <span class="entity-label">Действия</span>
                   <div class="actions stack-actions">
                     <form method="post" action="/profiles/{{ profile.id }}/check">
-                      <button class="button secondary small" type="submit">Проверить снова</button>
+                      <button class="button secondary small icon-button" type="submit" title="Проверить снова" aria-label="Проверить снова">
+                        <svg class="button-icon" aria-hidden="true"><use href="#icon-check"></use></svg>
+                        <span class="sr-only">Проверить снова</span>
+                      </button>
                     </form>
                     <form method="get" action="/profiles">
                       <input type="hidden" name="edit_profile_id" value="{{ profile.id }}" />
@@ -180,10 +195,16 @@
                       <input type="hidden" name="suggested_type" value="{{ profile.profile_type }}" />
                       <input type="hidden" name="suggested_root" value="{{ profile.root_path_or_remote }}" />
                       <input type="hidden" name="suggested_options_json" value="{{ profile.options_json }}" />
-                      <button class="button secondary small" type="submit">Редактировать</button>
+                      <button class="button secondary small icon-button" type="submit" title="Редактировать" aria-label="Редактировать">
+                        <svg class="button-icon" aria-hidden="true"><use href="#icon-edit"></use></svg>
+                        <span class="sr-only">Редактировать</span>
+                      </button>
                     </form>
                     <form method="post" action="/profiles/{{ profile.id }}/delete" onsubmit="return confirm('Удалить этот профиль из приложения? Данные в хранилищах удалены не будут.');">
-                      <button class="button secondary small" type="submit">Удалить</button>
+                      <button class="button secondary small icon-button" type="submit" title="Удалить" aria-label="Удалить">
+                        <svg class="button-icon" aria-hidden="true"><use href="#icon-trash"></use></svg>
+                        <span class="sr-only">Удалить</span>
+                      </button>
                     </form>
                   </div>
                 </section>

@@ -29,10 +29,16 @@
               {% endfor %}
             </ul>
             <div class="actions recovery-actions">
-              <a class="button secondary small" href="/runs/{{ run.id }}">Открыть запуск</a>
+              <a class="button secondary small icon-button" href="/runs/{{ run.id }}" title="Открыть запуск" aria-label="Открыть запуск">
+                <svg class="button-icon" aria-hidden="true"><use href="#icon-eye"></use></svg>
+                <span class="sr-only">Открыть запуск</span>
+              </a>
               {% if run.job %}
                 <form method="post" action="/runs/{{ run.id }}/retry">
-                  <button class="button secondary small" type="submit">Повторить с дельты</button>
+                  <button class="button secondary small icon-button" type="submit" title="Повторить с дельты" aria-label="Повторить с дельты">
+                    <svg class="button-icon" aria-hidden="true"><use href="#icon-repeat"></use></svg>
+                    <span class="sr-only">Повторить с дельты</span>
+                  </button>
                 </form>
               {% endif %}
             </div>
@@ -102,13 +108,22 @@
                 {% if run.job %}
                   <div class="run-recovery-cell">
                     {% if job_requires_manual_start_checklist(run.job) %}
-                      <a class="button secondary small" href="/jobs/{{ run.job.id }}/start">Checklist и запуск</a>
+                      <a class="button secondary small icon-button" href="/jobs/{{ run.job.id }}/start" title="Checklist и запуск" aria-label="Checklist и запуск">
+                        <svg class="button-icon" aria-hidden="true"><use href="#icon-check"></use></svg>
+                        <span class="sr-only">Checklist и запуск</span>
+                      </a>
                     {% else %}
                       <form method="post" action="/jobs/{{ run.job.id }}/run">
-                        <button class="button secondary small" type="submit">Повторить с дельты</button>
+                        <button class="button secondary small icon-button" type="submit" title="Повторить с дельты" aria-label="Повторить с дельты">
+                          <svg class="button-icon" aria-hidden="true"><use href="#icon-repeat"></use></svg>
+                          <span class="sr-only">Повторить с дельты</span>
+                        </button>
                       </form>
                     {% endif %}
-                    <a class="button secondary small" href="/runs/{{ run.id }}">Детали</a>
+                    <a class="button secondary small icon-button" href="/runs/{{ run.id }}" title="Детали" aria-label="Детали">
+                      <svg class="button-icon" aria-hidden="true"><use href="#icon-eye"></use></svg>
+                      <span class="sr-only">Детали</span>
+                    </a>
                   </div>
                 {% else %}
                   <span class="muted">—</span>

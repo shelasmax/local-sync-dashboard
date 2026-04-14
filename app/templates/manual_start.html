@@ -5,7 +5,10 @@
     <article class="card manual-start-card">
       <div class="section-header">
         <h2>Проверка перед ручным запуском</h2>
-        <a class="button secondary small" href="/jobs">Назад к задачам</a>
+        <a class="button secondary small icon-button" href="/jobs" title="Назад к задачам" aria-label="Назад к задачам">
+          <svg class="button-icon" aria-hidden="true"><use href="#icon-back"></use></svg>
+          <span class="sr-only">Назад к задачам</span>
+        </a>
       </div>
       <p class="note">Задача: <strong>{{ job.name }}</strong></p>
       <dl class="key-value">
@@ -43,12 +46,21 @@
       </div>
       <div class="actions manual-start-actions">
         <form method="post" action="/jobs/{{ job.id }}/run">
-          <button class="button" type="submit">Запустить copy сейчас</button>
+          <button class="button icon-button" type="submit" title="Запустить copy сейчас" aria-label="Запустить copy сейчас">
+            <svg class="button-icon" aria-hidden="true"><use href="#icon-play"></use></svg>
+            <span class="sr-only">Запустить copy сейчас</span>
+          </button>
         </form>
         <form method="post" action="/jobs/{{ job.id }}/preview">
-          <button class="button secondary" type="submit">Сначала сделать Dry-run</button>
+          <button class="button secondary icon-button" type="submit" title="Сначала сделать Dry-run" aria-label="Сначала сделать Dry-run">
+            <svg class="button-icon" aria-hidden="true"><use href="#icon-eye"></use></svg>
+            <span class="sr-only">Сначала сделать Dry-run</span>
+          </button>
         </form>
-        <a class="button secondary" href="/ops">Открыть Ops / Runbook</a>
+        <a class="button secondary icon-button" href="/ops" title="Открыть Ops / Runbook" aria-label="Открыть Ops / Runbook">
+          <svg class="button-icon" aria-hidden="true"><use href="#icon-book"></use></svg>
+          <span class="sr-only">Открыть Ops / Runbook</span>
+        </a>
       </div>
       <div class="checklist-panel checklist-panel-compact manual-start-panel">
         <strong>Практический порядок</strong>
