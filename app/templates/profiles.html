@@ -7,6 +7,12 @@
       {% if error %}
         <p class="empty-state">{{ error }}</p>
       {% endif %}
+      {% if info %}
+        <div class="callout callout-info">
+          <strong>Результат проверки</strong>
+          <p>{{ info }}</p>
+        </div>
+      {% endif %}
       <form method="post" action="{{ '/profiles/' ~ prefill.id ~ '/update' if prefill.id else '/profiles' }}" class="stack">
         <label>
           <span>Название</span>
@@ -102,7 +108,7 @@
           </thead>
           <tbody>
             {% for profile in profiles %}
-              <tr>
+              <tr {% if checked_profile_id == profile.id %}class="row-highlight"{% endif %}>
                 <td>{{ profile.name }}</td>
                 <td>{{ profile_type_label(profile.profile_type) }}</td>
                 <td><code class="break-any">{{ profile.root_path_or_remote }}</code></td>
@@ -116,6 +122,9 @@
                 <td><span class="break-any">{{ profile.secret_ref or "нет" }}</span></td>
                 <td>
                   <div class="actions stack-actions">
+                    <form method="post" action="/profiles/{{ profile.id }}/check">
+                      <button class="button secondary small" type="submit">Проверить снова</button>
+                    </form>
                     <form method="get" action="/profiles">
                       <input type="hidden" name="edit_profile_id" value="{{ profile.id }}" />
                       <input type="hidden" name="suggested_name" value="{{ profile.name }}" />

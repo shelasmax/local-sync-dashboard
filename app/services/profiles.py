@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
 from sqlalchemy import or_, select
@@ -18,6 +19,14 @@ class ProfileConflictError(ValueError):
 
 class ProfileInUseError(ValueError):
     pass
+
+
+@dataclass(slots=True)
+class ProfileCheckResult:
+    profile_id: int
+    ok: bool
+    message: str
+    command_preview: str | None
 
 
 def split_s3_remote_root(root_path_or_remote: str) -> tuple[str, str, str]:
@@ -66,6 +75,31 @@ def test_connection(payload: ConnectionTestPayload | StorageProfilePayload) -> t
 
     output = result.stdout.strip() or result.stderr.strip() or "Проверка remote завершена."
     return result.ok, output, result.command_preview
+
+
+def build_connection_test_payload(profile: StorageProfile) -> ConnectionTestPayload:
+    return ConnectionTestPayload(
+        profile_type=ProfileType(profile.profile_type),
+        root_path_or_remote=profile.root_path_or_remote,
+        options=deserialize_profile_options(profile),
+    )
+
+
+def check_profile(session: Session, profile_id: int) -> ProfileCheckResult:
+    profile = session.get(StorageProfile, profile_id)
+    if not profile:
+        raise LookupError("Профиль не найден.")
+
+    ok, message, command_preview = test_connection(build_connection_test_payload(profile))
+    profile.status = "ready" if ok else "unreachable"
+    session.commit()
+    session.refresh(profile)
+    return ProfileCheckResult(
+        profile_id=profile.id,
+        ok=ok,
+        message=message,
+        command_preview=command_preview,
+    )
 
 
 def create_profile(session: Session, payload: StorageProfilePayload) -> StorageProfile:

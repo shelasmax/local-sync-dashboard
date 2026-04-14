@@ -317,6 +317,11 @@ textarea {
   background: rgba(166, 59, 50, 0.08);
 }
 
+.callout-info {
+  border-color: rgba(47, 111, 99, 0.2);
+  background: rgba(47, 111, 99, 0.08);
+}
+
 .table-wrap {
   width: 100%;
   overflow-x: auto;
@@ -379,6 +384,10 @@ code.break-any,
 .profiles-table th:nth-child(6),
 .profiles-table td:nth-child(6) {
   min-width: 170px;
+}
+
+.row-highlight {
+  background: rgba(47, 111, 99, 0.05);
 }
 
 .runs-table th:nth-child(1),

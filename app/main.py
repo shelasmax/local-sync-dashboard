@@ -38,11 +38,14 @@ from app.services.jobs import (
 )
 from app.services.rclone import RcloneError
 from app.services.profiles import (
+    ProfileCheckResult,
     ProfileConflictError,
     ProfileInUseError,
     build_s3_remote_root,
+    check_profile,
     create_profile,
     delete_profile,
+    deserialize_profile_options,
     split_s3_remote_root,
     test_connection,
     update_profile,
@@ -135,14 +138,33 @@ def format_eta(seconds: int | None) -> str:
 
 
 def profile_connection_hint(profile: StorageProfile, configured_remotes: set[str]) -> str:
-    if profile.profile_type not in {ProfileType.S3_REMOTE.value, ProfileType.YANDEX_REMOTE.value}:
-        return ""
+    if profile.profile_type in {ProfileType.LOCAL_FOLDER.value, ProfileType.SYNOLOGY_SHARE.value}:
+        candidate = Path(profile.root_path_or_remote).expanduser()
+        if not candidate.exists():
+            return f"Путь не найден: {candidate}"
+        if not candidate.is_dir():
+            return f"Путь не является директорией: {candidate}"
+        if profile.status == "ready":
+            return "Локальный путь найден и последняя проверка прошла."
+        return "Путь выглядит доступным, но последняя проверка завершилась ошибкой. Нажмите «Проверить снова»."
 
     remote_name, _, _ = split_s3_remote_root(profile.root_path_or_remote)
     if not remote_name:
         return "У профиля не указан `rclone remote`."
     if remote_name in configured_remotes:
-        return ""
+        if profile.profile_type == ProfileType.S3_REMOTE.value:
+            options = deserialize_profile_options(profile)
+            endpoint = str(options.get("endpoint", "")).strip()
+            region = str(options.get("region", "")).strip()
+            meta = [part for part in [f"endpoint: {endpoint}" if endpoint else "", f"region: {region}" if region else ""] if part]
+            if profile.status == "ready":
+                suffix = f" ({', '.join(meta)})" if meta else ""
+                return f"Remote `{remote_name}:` найден и последняя проверка прошла.{suffix}"
+            suffix = f" Проверьте настройки: {', '.join(meta)}." if meta else ""
+            return f"Remote `{remote_name}:` найден, но последняя проверка завершилась ошибкой.{suffix}"
+        if profile.status == "ready":
+            return f"Remote `{remote_name}:` найден и последняя проверка прошла."
+        return f"Remote `{remote_name}:` найден, но последняя проверка завершилась ошибкой. Нажмите «Проверить снова»."
 
     known = ", ".join(f"{item}:" for item in sorted(configured_remotes)) or "нет настроенных remote"
     return f"Remote `{remote_name}:` не найден в `rclone`. Сейчас доступны: {known}."
@@ -435,6 +457,8 @@ def profiles_page(
     suggested_options_json: str = "{}",
     edit_profile_id: int | None = None,
     error: str = "",
+    info: str = "",
+    checked_profile_id: int | None = None,
     session: Session = Depends(get_session),
 ):
     profiles = _list_profiles(session)
@@ -458,6 +482,8 @@ def profiles_page(
                 edit_profile_id=edit_profile_id,
             ),
             "error": error,
+            "info": info,
+            "checked_profile_id": checked_profile_id,
         },
     )
 
@@ -576,6 +602,17 @@ def delete_profile_html(profile_id: int, session: Session = Depends(get_session)
         query = urlencode({"error": str(exc)})
         return RedirectResponse(url=f"/profiles?{query}", status_code=303)
     return RedirectResponse(url="/profiles", status_code=303)
+
+
+@app.post("/profiles/{profile_id}/check")
+def check_profile_html(profile_id: int, session: Session = Depends(get_session)):
+    try:
+        result = check_profile(session, profile_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    query = urlencode({"info": result.message, "checked_profile_id": result.profile_id})
+    return RedirectResponse(url=f"/profiles?{query}", status_code=303)
 
 
 @app.get("/jobs", response_class=HTMLResponse)
@@ -809,6 +846,20 @@ def api_delete_profile(profile_id: int, session: Session = Depends(get_session))
 @app.get("/api/storage-profiles", response_model=list[StorageProfileRead])
 def api_list_profiles(session: Session = Depends(get_session)):
     return _list_profiles(session)
+
+
+@app.post("/api/storage-profiles/{profile_id}/check")
+def api_check_profile(profile_id: int, session: Session = Depends(get_session)):
+    try:
+        result: ProfileCheckResult = check_profile(session, profile_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {
+        "profile_id": result.profile_id,
+        "ok": result.ok,
+        "message": result.message,
+        "command_preview": result.command_preview,
+    }
 
 
 @app.post("/api/jobs", response_model=SyncJobRead)

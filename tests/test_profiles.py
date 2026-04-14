@@ -14,6 +14,7 @@ from app.schemas import StorageProfilePayload
 from app.services.common import encode_json
 from app.services.profiles import (
     build_s3_remote_root,
+    check_profile,
     ProfileConflictError,
     ProfileInUseError,
     create_profile,
@@ -148,6 +149,45 @@ class ProfilesServiceTest(unittest.TestCase):
             build_s3_remote_root("s3home", "photos-archive", "backups/2026"),
             "s3home:photos-archive/backups/2026",
         )
+
+    def test_check_profile_updates_status_to_ready(self):
+        source_dir = self.root / "check-ready"
+        source_dir.mkdir()
+        profile = create_profile(
+            self.session,
+            StorageProfilePayload(
+                name="Check Me",
+                profile_type=ProfileType.LOCAL_FOLDER,
+                root_path_or_remote=str(source_dir),
+            ),
+        )
+        profile.status = "unreachable"
+        self.session.commit()
+
+        result = check_profile(self.session, profile.id)
+
+        self.assertTrue(result.ok)
+        self.assertIn("Локальный путь доступен", result.message)
+        self.assertEqual(self.session.get(StorageProfile, profile.id).status, "ready")
+
+    def test_check_profile_updates_status_to_unreachable(self):
+        missing_dir = self.root / "missing-folder"
+        profile = create_profile(
+            self.session,
+            StorageProfilePayload(
+                name="Broken Path",
+                profile_type=ProfileType.LOCAL_FOLDER,
+                root_path_or_remote=str(self.root),
+            ),
+        )
+        profile.root_path_or_remote = str(missing_dir)
+        self.session.commit()
+
+        result = check_profile(self.session, profile.id)
+
+        self.assertFalse(result.ok)
+        self.assertIn("Путь не существует", result.message)
+        self.assertEqual(self.session.get(StorageProfile, profile.id).status, "unreachable")
 
 
 if __name__ == "__main__":
