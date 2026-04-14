@@ -343,6 +343,86 @@ def profile_diagnostic_hints(profile: StorageProfile, configured_remotes: set[st
     return unique_hints
 
 
+def profile_edit_url(profile: StorageProfile) -> str:
+    query = urlencode(
+        {
+            "edit_profile_id": profile.id,
+            "suggested_name": profile.name,
+            "suggested_type": profile.profile_type,
+            "suggested_root": profile.root_path_or_remote,
+            "suggested_options_json": json.dumps(
+                user_profile_options(deserialize_profile_options(profile)),
+                ensure_ascii=False,
+                indent=2,
+            ),
+        }
+    )
+    return f"/profiles?{query}"
+
+
+def profile_diagnostic_actions(profile: StorageProfile, configured_remotes: set[str]) -> list[dict[str, str]]:
+    actions: list[dict[str, str]] = []
+    last_check = profile_last_check(profile)
+    message = str(last_check.get("message", "")).lower()
+
+    def add_link(label: str, href: str) -> None:
+        item = {"kind": "link", "label": label, "href": href}
+        if item not in actions:
+            actions.append(item)
+
+    def add_check(label: str = "Проверить снова") -> None:
+        item = {"kind": "check", "label": label}
+        if item not in actions:
+            actions.append(item)
+
+    edit_url = profile_edit_url(profile)
+
+    if profile.profile_type in {ProfileType.LOCAL_FOLDER.value, ProfileType.SYNOLOGY_SHARE.value}:
+        candidate = Path(profile.root_path_or_remote).expanduser()
+        if not candidate.exists() or not candidate.is_dir():
+            add_link("Исправить профиль", edit_url)
+            add_link("Открыть setup", "/setup")
+            return actions
+        if "permission" in message or "access" in message:
+            add_check()
+            add_link("Исправить профиль", edit_url)
+            return actions
+        if profile.status != "ready":
+            add_check()
+            add_link("Открыть setup", "/setup")
+        return actions
+
+    remote_name, _, _ = split_s3_remote_root(profile.root_path_or_remote)
+    if remote_name and remote_name not in configured_remotes:
+        add_link("Открыть setup", "/setup")
+        add_link("Исправить профиль", edit_url)
+        return actions
+
+    if "unauthorized" in message or "401" in message or "403" in message or "access denied" in message:
+        add_link("Открыть setup", "/setup")
+        add_link("Исправить профиль", edit_url)
+        add_check("Проверить после исправления")
+        return actions
+
+    if "timeout" in message or "tls" in message or "connection" in message or "no such host" in message:
+        add_check()
+        add_link("Открыть setup", "/setup")
+        return actions
+
+    if profile.profile_type == ProfileType.S3_REMOTE.value:
+        add_link("Исправить профиль", edit_url)
+        if profile.status != "ready":
+            add_check()
+        return actions
+
+    if profile.profile_type == ProfileType.YANDEX_REMOTE.value and profile.status != "ready":
+        add_link("Открыть setup", "/setup")
+        add_check()
+        return actions
+
+    return actions
+
+
 def normalize_profile_form_inputs(
     *,
     profile_type: str,
@@ -571,6 +651,7 @@ def profiles_page(
             "profile_connection_hint": profile_connection_hint,
             "profile_last_check": profile_last_check,
             "profile_diagnostic_hints": profile_diagnostic_hints,
+            "profile_diagnostic_actions": profile_diagnostic_actions,
             "configured_remotes": configured_remotes,
             "prefill": build_profile_prefill(
                 suggested_name=suggested_name,

@@ -117,6 +117,7 @@
                   {% set hint = profile_connection_hint(profile, configured_remotes) %}
                   {% set last_check = profile_last_check(profile) %}
                   {% set diagnostic_hints = profile_diagnostic_hints(profile, configured_remotes) %}
+                  {% set diagnostic_actions = profile_diagnostic_actions(profile, configured_remotes) %}
                   {% if hint %}
                     <div class="table-note">{{ hint }}</div>
                   {% endif %}
@@ -133,6 +134,19 @@
                           <li>{{ item }}</li>
                         {% endfor %}
                       </ul>
+                    </div>
+                  {% endif %}
+                  {% if diagnostic_actions %}
+                    <div class="inline-actions">
+                      {% for action in diagnostic_actions %}
+                        {% if action.kind == "link" %}
+                          <a class="button secondary tiny" href="{{ action.href }}">{{ action.label }}</a>
+                        {% elif action.kind == "check" %}
+                          <form method="post" action="/profiles/{{ profile.id }}/check">
+                            <button class="button secondary tiny" type="submit">{{ action.label }}</button>
+                          </form>
+                        {% endif %}
+                      {% endfor %}
                     </div>
                   {% endif %}
                   {% if last_check.command_preview %}
