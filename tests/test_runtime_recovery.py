@@ -77,6 +77,7 @@ class RuntimeRecoveryTest(unittest.TestCase):
     def tearDown(self):
         self.session.close()
         Base.metadata.drop_all(self.engine)
+        self.engine.dispose()
         settings.data_dir = self.original_data_dir
         settings.ensure_runtime_dirs()
         self.tmp_dir.cleanup()

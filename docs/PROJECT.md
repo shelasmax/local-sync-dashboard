@@ -134,6 +134,7 @@
 - история запусков и логирование
 - live progress bar, ETA, скорость и текущие transfer items для активных app-managed задач
 - recovery UX для `interrupted` запусков в `/runs`, `/runs/{id}`, на главной и в `/jobs`
+- cloud-to-cloud предупреждения в `/setup` и при составлении маршрута на `/jobs`
 - favicon и базовая чистка адаптивной верстки таблиц
 
 ### Чего пока нет
@@ -188,5 +189,5 @@ rclone lsf "S3 Beget:bucket-name" --max-depth 1
 
 1. Решить, нужен ли re-attach к живому `rclone` процессу после рестарта, или достаточно recovery через повторный `copy`.
 2. Улучшить диагностику профилей и cloud setup.
-3. Сделать заметнее в UI, что cloud transfer идет через локальную машину.
+3. Сделать заметнее в run-level UX, что cloud transfer идет через локальную машину.
 4. После этого доработать операционный слой: launchd, retention, backup/restore конфигурации.

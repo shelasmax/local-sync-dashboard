@@ -55,6 +55,7 @@ class JobsServiceTest(unittest.TestCase):
     def tearDown(self):
         self.session.close()
         Base.metadata.drop_all(self.engine)
+        self.engine.dispose()
 
     def _create_job(self) -> SyncJob:
         job = SyncJob(

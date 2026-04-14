@@ -170,6 +170,23 @@ def profile_connection_hint(profile: StorageProfile, configured_remotes: set[str
     return f"Remote `{remote_name}:` не найден в `rclone`. Сейчас доступны: {known}."
 
 
+def is_remote_profile(profile: StorageProfile | None) -> bool:
+    if not profile:
+        return False
+    return profile.profile_type in {ProfileType.S3_REMOTE.value, ProfileType.YANDEX_REMOTE.value}
+
+
+def job_transfer_warning(
+    source_profile: StorageProfile | None,
+    target_profile: StorageProfile | None,
+) -> str:
+    if is_remote_profile(source_profile) and is_remote_profile(target_profile):
+        return "Cloud-to-cloud маршрут идет через локальный Mac: `rclone` читает source и затем отправляет данные в target. Скорость зависит от интернета, sleep и перезагрузок этого компьютера."
+    if is_remote_profile(source_profile) or is_remote_profile(target_profile):
+        return "Маршрут использует cloud remote, но перенос все равно выполняется локально на этом Mac через `rclone`."
+    return ""
+
+
 def suggested_profiles(diagnostics) -> list[dict[str, str]]:
     suggestions: list[dict[str, str]] = []
     for path in diagnostics.local_candidates["icloud"]:
@@ -629,6 +646,10 @@ def jobs_page(request: Request, error: str = "", preview_job_id: int | None = No
             preview = preview_job(session, preview_job_id)
         except (LookupError, RcloneError) as exc:
             error = str(exc)
+    indexed_profiles = {profile.id: profile for profile in profiles}
+    source_profile = indexed_profiles.get(prefill["source_profile_id"]) if prefill["source_profile_id"] else None
+    target_profile = indexed_profiles.get(prefill["target_profile_id"]) if prefill["target_profile_id"] else None
+    transfer_warning = job_transfer_warning(source_profile, target_profile)
     return templates.TemplateResponse(
         request=request,
         name="jobs.html",
@@ -650,6 +671,8 @@ def jobs_page(request: Request, error: str = "", preview_job_id: int | None = No
             "preview": preview,
             "interrupted_runs": interrupted_runs,
             "prefill": prefill,
+            "transfer_warning": transfer_warning,
+            "job_transfer_warning": job_transfer_warning,
             "job_templates": suggested_job_templates(profiles),
         },
     )

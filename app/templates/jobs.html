@@ -40,6 +40,12 @@
       {% if error %}
         <p class="empty-state">{{ error }}</p>
       {% endif %}
+      {% if transfer_warning %}
+        <div class="callout callout-info">
+          <strong>Как пойдет трафик</strong>
+          <p>{{ transfer_warning }}</p>
+        </div>
+      {% endif %}
       <form method="post" action="/jobs" class="stack">
         <label>
           <span>Название</span>
@@ -167,6 +173,10 @@
                 <td>{{ describe_schedule(job.schedule) }}</td>
                 <td>{{ job.mode }}</td>
                 <td>
+                  {% set route_warning = job_transfer_warning(job.source_profile, job.target_profile) %}
+                  {% if route_warning %}
+                    <div class="table-note">{{ route_warning }}</div>
+                  {% endif %}
                   <div class="actions">
                     <form method="post" action="/jobs/{{ job.id }}/run">
                       <button class="button small" type="submit">Запустить</button>

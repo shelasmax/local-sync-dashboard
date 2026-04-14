@@ -36,6 +36,7 @@ class ProfilesServiceTest(unittest.TestCase):
     def tearDown(self):
         self.session.close()
         Base.metadata.drop_all(self.engine)
+        self.engine.dispose()
         self.tmp_dir.cleanup()
 
     def test_create_profile_rejects_duplicate_name(self):
