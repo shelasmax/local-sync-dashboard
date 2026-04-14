@@ -1,160 +1,175 @@
 {% extends "base.html" %}
 
 {% block content %}
-  <section class="grid two align-start">
-    <article class="card">
-      <h2>{{ "Редактировать профиль" if prefill.id else "Создать профиль хранилища" }}</h2>
-      {% if error %}
-        <p class="empty-state">{{ error }}</p>
-      {% endif %}
-      {% if info %}
-        <div class="callout callout-info">
-          <strong>Результат проверки</strong>
-          <p>{{ info }}</p>
+  <section class="stack">
+    <details class="card expand-card" {% if prefill.id or error or info or not profiles %}open{% endif %}>
+      <summary class="expand-summary">
+        <div class="expand-summary-main">
+          <span class="entity-label">Форма профиля</span>
+          <strong class="expand-summary-title">{{ "Редактировать профиль" if prefill.id else "Создать профиль хранилища" }}</strong>
         </div>
-      {% endif %}
-      <form method="post" action="{{ '/profiles/' ~ prefill.id ~ '/update' if prefill.id else '/profiles' }}" class="stack">
-        <label>
-          <span>Название</span>
-          <input name="name" required placeholder="Резервная копия на Яндекс Диск" value="{{ prefill.name }}" />
-        </label>
-
-        <label>
-          <span>Тип</span>
-          <select name="profile_type" id="profile-type-select">
-            {% for profile_type in profile_types %}
-              <option value="{{ profile_type }}" {% if prefill.profile_type == profile_type %}selected{% endif %}>{{ profile_type_label(profile_type) }}</option>
-            {% endfor %}
-          </select>
-        </label>
-
-        <label id="root-field-wrapper">
-          <span id="root-field-label">Корневой путь или remote</span>
-          <input id="root-path-input" name="root_path_or_remote" required placeholder="/Volumes/Synology/Photos или yadisk:" value="{{ prefill.root_path_or_remote }}" />
-        </label>
-
-        <section class="card" id="s3-fields" {% if prefill.profile_type != "s3_remote" %}hidden{% endif %}>
-          <h3>S3-настройки профиля</h3>
-          <div class="grid two compact-grid">
-            <label>
-              <span>Имя уже настроенного `rclone` remote</span>
-              <input id="s3-remote-name" name="s3_remote_name" placeholder="s3home" value="{{ prefill.s3_remote_name }}" />
-            </label>
-            <label>
-              <span>Bucket</span>
-              <input id="s3-bucket" name="s3_bucket" placeholder="photos-archive" value="{{ prefill.s3_bucket }}" />
-            </label>
-            <label>
-              <span>Префикс внутри bucket</span>
-              <input id="s3-prefix" name="s3_prefix" placeholder="backups/2026" value="{{ prefill.s3_prefix }}" />
-            </label>
-            <label>
-              <span>Provider</span>
-              <input name="s3_provider" placeholder="AWS, Minio, Other" value="{{ prefill.s3_provider }}" />
-            </label>
-            <label>
-              <span>Region</span>
-              <input name="s3_region" placeholder="eu-central-1" value="{{ prefill.s3_region }}" />
-            </label>
-            <label>
-              <span>Endpoint</span>
-              <input name="s3_endpoint" placeholder="https://s3.amazonaws.com" value="{{ prefill.s3_endpoint }}" />
-            </label>
-          </div>
-          <p class="note">Итоговый `remote` собирается автоматически как `remote:bucket/prefix`. Поля `provider`, `region` и `endpoint` сохраняются в `Options JSON` как вспомогательные настройки профиля, но сам `rclone remote` должен существовать заранее.</p>
-        </section>
-
-        <label>
-          <span>Секрет, если нужен</span>
-          <textarea name="secret" rows="3" placeholder="Сохраняется в macOS Keychain, а не в SQLite."></textarea>
-        </label>
-
-        {% if prefill.id %}
-          <label class="checkbox">
-            <input type="checkbox" name="clear_secret" />
-            <span>Удалить сохраненный секрет из macOS Keychain</span>
-          </label>
+        <span class="expand-summary-note">{{ "Открыто для редактирования текущего профиля" if prefill.id else "Опциональный блок. Открывайте, когда нужно добавить новый remote или папку." }}</span>
+      </summary>
+      <div class="expand-content stack">
+        {% if error %}
+          <p class="empty-state">{{ error }}</p>
         {% endif %}
+        {% if info %}
+          <div class="callout callout-info">
+            <strong>Результат проверки</strong>
+            <p>{{ info }}</p>
+          </div>
+        {% endif %}
+        <form method="post" action="{{ '/profiles/' ~ prefill.id ~ '/update' if prefill.id else '/profiles' }}" class="stack">
+          <label>
+            <span>Название</span>
+            <input name="name" required placeholder="Резервная копия на Яндекс Диск" value="{{ prefill.name }}" />
+          </label>
 
-        <label>
-          <span>Options JSON</span>
-          <textarea name="options_json" rows="4">{{ prefill.options_json }}</textarea>
-        </label>
+          <label>
+            <span>Тип</span>
+            <select name="profile_type" id="profile-type-select">
+              {% for profile_type in profile_types %}
+                <option value="{{ profile_type }}" {% if prefill.profile_type == profile_type %}selected{% endif %}>{{ profile_type_label(profile_type) }}</option>
+              {% endfor %}
+            </select>
+          </label>
 
-        <div class="actions">
-          <button class="button" type="submit">{{ "Сохранить изменения" if prefill.id else "Сохранить профиль" }}</button>
+          <label id="root-field-wrapper">
+            <span id="root-field-label">Корневой путь или remote</span>
+            <input id="root-path-input" name="root_path_or_remote" required placeholder="/Volumes/Synology/Photos или yadisk:" value="{{ prefill.root_path_or_remote }}" />
+          </label>
+
+          <section class="card" id="s3-fields" {% if prefill.profile_type != "s3_remote" %}hidden{% endif %}>
+            <h3>S3-настройки профиля</h3>
+            <div class="grid two compact-grid">
+              <label>
+                <span>Имя уже настроенного `rclone` remote</span>
+                <input id="s3-remote-name" name="s3_remote_name" placeholder="s3home" value="{{ prefill.s3_remote_name }}" />
+              </label>
+              <label>
+                <span>Bucket</span>
+                <input id="s3-bucket" name="s3_bucket" placeholder="photos-archive" value="{{ prefill.s3_bucket }}" />
+              </label>
+              <label>
+                <span>Префикс внутри bucket</span>
+                <input id="s3-prefix" name="s3_prefix" placeholder="backups/2026" value="{{ prefill.s3_prefix }}" />
+              </label>
+              <label>
+                <span>Provider</span>
+                <input name="s3_provider" placeholder="AWS, Minio, Other" value="{{ prefill.s3_provider }}" />
+              </label>
+              <label>
+                <span>Region</span>
+                <input name="s3_region" placeholder="eu-central-1" value="{{ prefill.s3_region }}" />
+              </label>
+              <label>
+                <span>Endpoint</span>
+                <input name="s3_endpoint" placeholder="https://s3.amazonaws.com" value="{{ prefill.s3_endpoint }}" />
+              </label>
+            </div>
+            <p class="note">Итоговый `remote` собирается автоматически как `remote:bucket/prefix`. Поля `provider`, `region` и `endpoint` сохраняются в `Options JSON` как вспомогательные настройки профиля, но сам `rclone remote` должен существовать заранее.</p>
+          </section>
+
+          <label>
+            <span>Секрет, если нужен</span>
+            <textarea name="secret" rows="3" placeholder="Сохраняется в macOS Keychain, а не в SQLite."></textarea>
+          </label>
+
           {% if prefill.id %}
-            <a class="button secondary" href="/profiles">Отменить</a>
+            <label class="checkbox">
+              <input type="checkbox" name="clear_secret" />
+              <span>Удалить сохраненный секрет из macOS Keychain</span>
+            </label>
           {% endif %}
-        </div>
-      </form>
-      <p class="note">Для remote-профилей ожидается уже настроенное имя remote в `rclone` или полный remote-путь. Пустой секрет при редактировании оставит текущее значение без изменений.</p>
-    </article>
+
+          <label>
+            <span>Options JSON</span>
+            <textarea name="options_json" rows="4">{{ prefill.options_json }}</textarea>
+          </label>
+
+          <div class="actions">
+            <button class="button" type="submit">{{ "Сохранить изменения" if prefill.id else "Сохранить профиль" }}</button>
+            {% if prefill.id %}
+              <a class="button secondary" href="/profiles">Отменить</a>
+            {% endif %}
+          </div>
+        </form>
+        <p class="note">Для remote-профилей ожидается уже настроенное имя remote в `rclone` или полный remote-путь. Пустой секрет при редактировании оставит текущее значение без изменений.</p>
+      </div>
+    </details>
 
     <article class="card">
-      <h2>Профили хранилищ</h2>
+      <div class="section-header">
+        <h2>Профили хранилищ</h2>
+        <span class="note">Список ниже сделан горизонтальными блоками по аналогии с запусками.</span>
+      </div>
       {% if profiles %}
-        <div class="table-wrap">
-        <table class="profiles-table">
-          <thead>
-            <tr>
-              <th>Название</th>
-              <th>Тип</th>
-              <th>Корень</th>
-              <th>Статус</th>
-              <th>Ссылка на секрет</th>
-              <th>Действия</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for profile in profiles %}
-              <tr {% if checked_profile_id == profile.id %}class="row-highlight"{% endif %}>
-                <td>{{ profile.name }}</td>
-                <td>{{ profile_type_label(profile.profile_type) }}</td>
-                <td><code class="break-any">{{ profile.root_path_or_remote }}</code></td>
-                <td>
-                  <span class="badge badge-{{ profile.status }}">{{ status_label(profile.status) }}</span>
-                  {% set hint = profile_connection_hint(profile, configured_remotes) %}
-                  {% set last_check = profile_last_check(profile) %}
-                  {% set diagnostic_hints = profile_diagnostic_hints(profile, configured_remotes) %}
-                  {% set diagnostic_actions = profile_diagnostic_actions(profile, configured_remotes) %}
-                  {% if hint %}
-                    <div class="table-note">{{ hint }}</div>
-                  {% endif %}
-                  {% if last_check.message %}
-                    <div class="table-note">
-                      <strong>Последняя проверка:</strong> {{ last_check.message }}
-                    </div>
-                  {% endif %}
-                  {% if diagnostic_hints %}
-                    <div class="table-note">
-                      <strong>Что проверить:</strong>
-                      <ul class="plain-list compact-list">
-                        {% for item in diagnostic_hints %}
-                          <li>{{ item }}</li>
+        <div class="entity-list">
+          {% for profile in profiles %}
+            {% set hint = profile_connection_hint(profile, configured_remotes) %}
+            {% set last_check = profile_last_check(profile) %}
+            {% set diagnostic_hints = profile_diagnostic_hints(profile, configured_remotes) %}
+            {% set diagnostic_actions = profile_diagnostic_actions(profile, configured_remotes) %}
+            <article class="entity-card profile-card {% if checked_profile_id == profile.id %}row-highlight{% endif %}">
+              <div class="entity-row profile-row">
+                <section class="entity-section entity-title-block">
+                  <span class="entity-label">Название</span>
+                  <strong>{{ profile.name }}</strong>
+                  <div class="muted">{{ profile_type_label(profile.profile_type) }}</div>
+                </section>
+
+                <section class="entity-section entity-path-block">
+                  <span class="entity-label">Корень</span>
+                  <code class="break-any">{{ profile.root_path_or_remote }}</code>
+                </section>
+
+                <section class="entity-section entity-status-block">
+                  <span class="entity-label">Статус</span>
+                  <div class="profile-status-cell">
+                    <span class="badge badge-{{ profile.status }}">{{ status_label(profile.status) }}</span>
+                    {% if hint %}
+                      <div class="table-note">{{ hint }}</div>
+                    {% endif %}
+                    {% if last_check.message %}
+                      <div class="table-note">
+                        <strong>Последняя проверка:</strong> {{ last_check.message }}
+                      </div>
+                    {% endif %}
+                    {% if diagnostic_hints %}
+                      <div class="table-note">
+                        <strong>Что проверить:</strong>
+                        <ul class="plain-list compact-list">
+                          {% for item in diagnostic_hints %}
+                            <li>{{ item }}</li>
+                          {% endfor %}
+                        </ul>
+                      </div>
+                    {% endif %}
+                    {% if diagnostic_actions %}
+                      <div class="inline-actions">
+                        {% for action in diagnostic_actions %}
+                          {% if action.kind == "link" %}
+                            <a class="button secondary tiny" href="{{ action.href }}">{{ action.label }}</a>
+                          {% elif action.kind == "check" %}
+                            <form method="post" action="/profiles/{{ profile.id }}/check">
+                              <button class="button secondary tiny" type="submit">{{ action.label }}</button>
+                            </form>
+                          {% endif %}
                         {% endfor %}
-                      </ul>
+                      </div>
+                    {% endif %}
+                    {% if last_check.command_preview %}
+                      <div class="table-note"><code class="break-any">{{ last_check.command_preview }}</code></div>
+                    {% endif %}
+                    <div class="table-note">
+                      <strong>Keychain:</strong> <span class="break-any">{{ profile.secret_ref or "нет" }}</span>
                     </div>
-                  {% endif %}
-                  {% if diagnostic_actions %}
-                    <div class="inline-actions">
-                      {% for action in diagnostic_actions %}
-                        {% if action.kind == "link" %}
-                          <a class="button secondary tiny" href="{{ action.href }}">{{ action.label }}</a>
-                        {% elif action.kind == "check" %}
-                          <form method="post" action="/profiles/{{ profile.id }}/check">
-                            <button class="button secondary tiny" type="submit">{{ action.label }}</button>
-                          </form>
-                        {% endif %}
-                      {% endfor %}
-                    </div>
-                  {% endif %}
-                  {% if last_check.command_preview %}
-                    <div class="table-note"><code class="break-any">{{ last_check.command_preview }}</code></div>
-                  {% endif %}
-                </td>
-                <td><span class="break-any">{{ profile.secret_ref or "нет" }}</span></td>
-                <td>
+                  </div>
+                </section>
+
+                <section class="entity-section entity-actions-block">
+                  <span class="entity-label">Действия</span>
                   <div class="actions stack-actions">
                     <form method="post" action="/profiles/{{ profile.id }}/check">
                       <button class="button secondary small" type="submit">Проверить снова</button>
@@ -171,11 +186,10 @@
                       <button class="button secondary small" type="submit">Удалить</button>
                     </form>
                   </div>
-                </td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+                </section>
+              </div>
+            </article>
+          {% endfor %}
         </div>
       {% else %}
         <p class="empty-state">Профилей пока нет. Добавьте локальные папки, смонтированные шары Synology или remote-подключения rclone.</p>

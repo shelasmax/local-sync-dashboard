@@ -20,6 +20,11 @@
           <div class="callout callout-warn">
             <strong>{{ run.job.name if run.job else ("Задача #" ~ run.job_id) }}</strong>
             <p>{{ run.summary }}</p>
+            <ul class="plain-list compact-list">
+              {% for item in interrupted_run_recovery_steps(run)[:2] %}
+                <li>{{ item }}</li>
+              {% endfor %}
+            </ul>
             <div class="actions">
               <a class="button secondary small" href="/runs/{{ run.id }}">Детали</a>
               {% if run.job %}
@@ -34,110 +39,116 @@
     </section>
   {% endif %}
 
-  <section class="grid two align-start">
-    <article class="card">
-      <h2>Создать задачу синхронизации</h2>
-      {% if error %}
-        <p class="empty-state">{{ error }}</p>
-      {% endif %}
-      {% if transfer_warning %}
-        <div class="callout callout-info">
-          <strong>Как пойдет трафик</strong>
-          <p>{{ transfer_warning }}</p>
+  <section class="stack">
+    <details class="card expand-card" {% if error or not jobs %}open{% endif %}>
+      <summary class="expand-summary">
+        <div class="expand-summary-main">
+          <span class="entity-label">Форма задачи</span>
+          <strong class="expand-summary-title">Создать задачу синхронизации</strong>
         </div>
-      {% endif %}
-      {% if pre_run_checklist %}
-        <div class="callout callout-info">
-          <strong>Перед длинным запуском проверьте</strong>
-          <ul class="plain-list">
-            {% for item in pre_run_checklist %}
-              <li>{{ item }}</li>
-            {% endfor %}
-          </ul>
-        </div>
-      {% endif %}
-      <form method="post" action="/jobs" class="stack">
-        <label>
-          <span>Название</span>
-          <input name="name" required placeholder="Фото с Synology на Яндекс Диск" value="{{ prefill.name }}" />
-        </label>
+        <span class="expand-summary-note">Опциональный блок. Открывайте его, когда нужно добавить новый маршрут `copy`.</span>
+      </summary>
+      <div class="expand-content stack">
+        {% if error %}
+          <p class="empty-state">{{ error }}</p>
+        {% endif %}
+        {% if transfer_warning %}
+          <div class="callout callout-info">
+            <strong>Как пойдет трафик</strong>
+            <p>{{ transfer_warning }}</p>
+          </div>
+        {% endif %}
+        {% if pre_run_checklist %}
+          <div class="callout callout-info">
+            <strong>Перед длинным запуском проверьте</strong>
+            <ul class="plain-list">
+              {% for item in pre_run_checklist %}
+                <li>{{ item }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+        {% endif %}
+        <form method="post" action="/jobs" class="stack">
+          <label>
+            <span>Название</span>
+            <input name="name" required placeholder="Фото с Synology на Яндекс Диск" value="{{ prefill.name }}" />
+          </label>
 
-        <label>
-          <span>Профиль-источник</span>
-          <select name="source_profile_id">
-            {% for profile in profiles %}
-              <option value="{{ profile.id }}" {% if prefill.source_profile_id == profile.id %}selected{% endif %}>{{ profile.name }} ({{ profile_type_label(profile.profile_type) }})</option>
-            {% endfor %}
-          </select>
-        </label>
+          <label>
+            <span>Профиль-источник</span>
+            <select name="source_profile_id">
+              {% for profile in profiles %}
+                <option value="{{ profile.id }}" {% if prefill.source_profile_id == profile.id %}selected{% endif %}>{{ profile.name }} ({{ profile_type_label(profile.profile_type) }})</option>
+              {% endfor %}
+            </select>
+          </label>
 
-        <label>
-          <span>Подпапка в источнике</span>
-          <input name="source_path" placeholder="необязательно/подкаталог" value="{{ prefill.source_path }}" />
-        </label>
+          <label>
+            <span>Подпапка в источнике</span>
+            <input name="source_path" placeholder="необязательно/подкаталог" value="{{ prefill.source_path }}" />
+          </label>
 
-        <label>
-          <span>Профиль-назначение</span>
-          <select name="target_profile_id">
-            {% for profile in profiles %}
-              <option value="{{ profile.id }}" {% if prefill.target_profile_id == profile.id %}selected{% endif %}>{{ profile.name }} ({{ profile_type_label(profile.profile_type) }})</option>
-            {% endfor %}
-          </select>
-        </label>
+          <label>
+            <span>Профиль-назначение</span>
+            <select name="target_profile_id">
+              {% for profile in profiles %}
+                <option value="{{ profile.id }}" {% if prefill.target_profile_id == profile.id %}selected{% endif %}>{{ profile.name }} ({{ profile_type_label(profile.profile_type) }})</option>
+              {% endfor %}
+            </select>
+          </label>
 
-        <label>
-          <span>Подпапка в назначении</span>
-          <input name="target_path" placeholder="backup/2026" value="{{ prefill.target_path }}" />
-        </label>
+          <label>
+            <span>Подпапка в назначении</span>
+            <input name="target_path" placeholder="backup/2026" value="{{ prefill.target_path }}" />
+          </label>
 
-        <label>
-          <span>Расписание</span>
-          <input name="schedule" value="{{ prefill.schedule }}" placeholder="manual, hourly, daily, weekly или cron:0 6 * * *" />
-        </label>
+          <label>
+            <span>Расписание</span>
+            <input name="schedule" value="{{ prefill.schedule }}" placeholder="manual, hourly, daily, weekly или cron:0 6 * * *" />
+          </label>
 
-        <label>
-          <span>Ограничение скорости</span>
-          <input name="bandwidth_limit" placeholder="необязательно, например 8M" value="{{ prefill.bandwidth_limit }}" />
-        </label>
+          <label>
+            <span>Ограничение скорости</span>
+            <input name="bandwidth_limit" placeholder="необязательно, например 8M" value="{{ prefill.bandwidth_limit }}" />
+          </label>
 
-        <label>
-          <span>Фильтры</span>
-          <textarea name="filters" rows="5" placeholder="- *.tmp&#10;+ *.jpg&#10;- *">{{ prefill.filters }}</textarea>
-        </label>
+          <label>
+            <span>Фильтры</span>
+            <textarea name="filters" rows="5" placeholder="- *.tmp&#10;+ *.jpg&#10;- *">{{ prefill.filters }}</textarea>
+          </label>
 
-        <label class="checkbox">
-          <input type="checkbox" name="enabled" {% if prefill.enabled %}checked{% endif %} />
-          <span>Включить запуск по расписанию</span>
-        </label>
+          <label class="checkbox">
+            <input type="checkbox" name="enabled" {% if prefill.enabled %}checked{% endif %} />
+            <span>Включить запуск по расписанию</span>
+          </label>
 
-        <label class="checkbox">
-          <input type="checkbox" name="verify_checksum" {% if prefill.verify_checksum %}checked{% endif %} />
-          <span>Проверять контрольные суммы</span>
-        </label>
+          <label class="checkbox">
+            <input type="checkbox" name="verify_checksum" {% if prefill.verify_checksum %}checked{% endif %} />
+            <span>Проверять контрольные суммы</span>
+          </label>
 
-        <button class="button" type="submit">Сохранить задачу</button>
-      </form>
-      <p class="note">Примеры расписаний: {{ schedule_examples | join(", ") }}</p>
-    </article>
+          <button class="button" type="submit">Сохранить задачу</button>
+        </form>
+        <p class="note">Примеры расписаний: {{ schedule_examples | join(", ") }}</p>
+      </div>
+    </details>
 
     <article class="card">
-      <h2>Задачи синхронизации</h2>
+      <div class="section-header">
+        <h2>Задачи синхронизации</h2>
+        <span class="note">Список ниже держим главным экраном, а создание новой задачи спрятано в блок выше.</span>
+      </div>
       {% if jobs %}
-        <table>
-          <thead>
-            <tr>
-              <th>Название</th>
-              <th>Маршрут</th>
-              <th>Расписание</th>
-              <th>Режим</th>
-              <th>Действия</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for job in jobs %}
-              {% set live = active_runs.get(job.id) %}
-              <tr>
-                <td>
+        <div class="entity-list">
+          {% for job in jobs %}
+            {% set live = active_runs.get(job.id) %}
+            {% set route_warning = job_transfer_warning(job.source_profile, job.target_profile) %}
+            {% set run_checklist = job_pre_run_checklist(job.source_profile, job.target_profile) %}
+            {% set needs_manual_start_checklist = job_requires_manual_start_checklist(job) %}
+            <article class="entity-card job-card">
+              <div class="entity-row job-row">
+                <section class="entity-section entity-title-block">
+                  <span class="entity-label">Задача</span>
                   <strong>{{ job.name }}</strong>
                   <div class="muted">{{ "включена" if job.enabled else "на паузе" }}</div>
                   {% if live %}
@@ -169,66 +180,81 @@
                       {% endif %}
                     </div>
                   {% endif %}
-                </td>
-                <td>
-                  {{ job.source_profile.name if job.source_profile else job.source_profile_id }}
-                  /
-                  {{ job.source_path or "." }}
-                  <br />
-                  <span class="muted">в</span>
-                  {{ job.target_profile.name if job.target_profile else job.target_profile_id }}
-                  /
-                  {{ job.target_path or "." }}
-                </td>
-                <td>{{ describe_schedule(job.schedule) }}</td>
-                <td>{{ job.mode }}</td>
-                <td>
-                  {% set route_warning = job_transfer_warning(job.source_profile, job.target_profile) %}
-                  {% set run_checklist = job_pre_run_checklist(job.source_profile, job.target_profile) %}
-                  {% if route_warning %}
-                    <div class="table-note">{{ route_warning }}</div>
-                  {% endif %}
-                  {% if run_checklist %}
-                    <div class="checklist-panel">
-                      <strong>Перед запуском</strong>
-                      <ul class="plain-list compact-list">
-                        {% for item in run_checklist[:2] %}
-                          <li>{{ item }}</li>
-                        {% endfor %}
-                      </ul>
-                    </div>
-                  {% endif %}
-                  <div class="actions">
-                    <form method="post" action="/jobs/{{ job.id }}/run">
-                      <button class="button small" type="submit">Запустить</button>
-                    </form>
-                    <form method="post" action="/jobs/{{ job.id }}/preview">
-                      <button class="button secondary small" type="submit">Dry-run</button>
-                    </form>
-                    {% if live %}
-                      <form method="post" action="/jobs/{{ job.id }}/pause">
-                        <button class="button secondary small" type="submit">Остановить</button>
-                      </form>
-                    {% elif job.enabled %}
-                      <form method="post" action="/jobs/{{ job.id }}/pause">
-                        <button class="button secondary small" type="submit">Пауза</button>
-                      </form>
-                    {% else %}
-                      <form method="post" action="/jobs/{{ job.id }}/resume">
-                        <button class="button secondary small" type="submit">Возобновить</button>
-                      </form>
-                    {% endif %}
-                    {% if not live %}
-                      <form method="post" action="/jobs/{{ job.id }}/delete">
-                        <button class="button secondary small" type="submit">Удалить</button>
-                      </form>
-                    {% endif %}
+                </section>
+
+                <section class="entity-section entity-route-block">
+                  <span class="entity-label">Маршрут</span>
+                  <div>
+                    {{ job.source_profile.name if job.source_profile else job.source_profile_id }}
+                    /
+                    {{ job.source_path or "." }}
                   </div>
-                </td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+                  <div class="muted">
+                    в
+                    {{ job.target_profile.name if job.target_profile else job.target_profile_id }}
+                    /
+                    {{ job.target_path or "." }}
+                  </div>
+                </section>
+
+                <section class="entity-section entity-meta-block">
+                  <span class="entity-label">Режим</span>
+                  <div>{{ describe_schedule(job.schedule) }}</div>
+                  <div class="muted">{{ job.mode }}</div>
+                </section>
+
+                <section class="entity-section entity-actions-block">
+                  <span class="entity-label">Действия</span>
+                  <div class="job-action-cell">
+                    {% if route_warning %}
+                      <div class="table-note job-note">{{ route_warning }}</div>
+                    {% endif %}
+                    {% if run_checklist %}
+                      <div class="checklist-panel checklist-panel-compact">
+                        <strong>Перед длинным запуском</strong>
+                        <ul class="plain-list compact-list">
+                          {% for item in run_checklist[:2] %}
+                            <li>{{ item }}</li>
+                          {% endfor %}
+                        </ul>
+                      </div>
+                    {% endif %}
+                    <div class="actions job-actions">
+                      {% if needs_manual_start_checklist %}
+                        <a class="button small" href="/jobs/{{ job.id }}/start">Checklist и запуск</a>
+                      {% else %}
+                        <form method="post" action="/jobs/{{ job.id }}/run">
+                          <button class="button small" type="submit">Запустить</button>
+                        </form>
+                      {% endif %}
+                      <form method="post" action="/jobs/{{ job.id }}/preview">
+                        <button class="button secondary small" type="submit">Dry-run</button>
+                      </form>
+                      {% if live %}
+                        <form method="post" action="/jobs/{{ job.id }}/pause">
+                          <button class="button secondary small" type="submit">Остановить</button>
+                        </form>
+                      {% elif job.enabled %}
+                        <form method="post" action="/jobs/{{ job.id }}/pause">
+                          <button class="button secondary small" type="submit">Пауза</button>
+                        </form>
+                      {% else %}
+                        <form method="post" action="/jobs/{{ job.id }}/resume">
+                          <button class="button secondary small" type="submit">Возобновить</button>
+                        </form>
+                      {% endif %}
+                      {% if not live %}
+                        <form method="post" action="/jobs/{{ job.id }}/delete">
+                          <button class="button secondary small" type="submit">Удалить</button>
+                        </form>
+                      {% endif %}
+                    </div>
+                  </div>
+                </section>
+              </div>
+            </article>
+          {% endfor %}
+        </div>
       {% else %}
         <p class="empty-state">Задач пока нет. Сначала создайте профили, затем настройте однонаправленную задачу `copy`.</p>
       {% endif %}
@@ -260,6 +286,7 @@
               <li>{{ item }}</li>
             {% endfor %}
           </ul>
+          <p>Если запуск всё же прервётся, recovery в этом проекте делается через повторный `copy` с дельты, а не через `re-attach` к старому процессу.</p>
         </div>
       {% endif %}
       <div class="grid two align-start">

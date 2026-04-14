@@ -1,69 +1,78 @@
 {% extends "base.html" %}
 
 {% block content %}
-  <section class="grid two align-start">
-    <article class="card">
+  <section class="grid two align-start workspace-grid">
+    <article class="card setup-card">
       <h2>Ночной запуск больших задач</h2>
-      <div class="callout callout-info">
+      <div class="callout callout-info recovery-callout">
         <strong>Для длинных cloud задач лучше использовать ночное окно</strong>
         <p>Все переносы идут через локальный Mac. Если компьютер уснет, потеряет сеть или будет перезагружен, текущий запуск остановится.</p>
       </div>
-      <ol class="plain-list">
+      <div class="checklist-panel checklist-panel-compact">
+      <ol class="plain-list compact-list">
         <li>Запускайте большие выгрузки в интервале, когда Mac не уйдет в sleep.</li>
         <li>Проверьте стабильность интернета и наличие места/ресурсов на Mac.</li>
         <li>Перед первым большим запуском используйте `Dry-run` на странице задач.</li>
         <li>Для чувствительных задач сначала делайте короткий ручной тест на отдельной подпапке.</li>
       </ol>
+      </div>
     </article>
 
-    <article class="card">
+    <article class="card setup-card">
       <h2>Recovery после прерывания</h2>
-      <div class="callout callout-warn">
+      <div class="callout callout-warn recovery-callout">
         <strong>Recovery-модель проекта: repeat-from-delta</strong>
         <p>`re-attach` к уже живому `rclone` процессу не поддерживается. После прерывания используйте повторный `copy` с дельты через интерфейс.</p>
       </div>
-      <ol class="plain-list">
+      <div class="checklist-panel checklist-panel-compact">
+      <ol class="plain-list compact-list">
         <li>Откройте `/runs` и найдите запуск со статусом `прервано`.</li>
         <li>Проверьте последний известный прогресс и причину прерывания.</li>
         <li>Исправьте проблему: сеть, sleep, remote, mount path.</li>
         <li>Нажмите `Повторить с дельты` или повторно запустите связанную задачу.</li>
       </ol>
+      </div>
     </article>
   </section>
 
-  <section class="grid two align-start">
-    <article class="card">
+  <section class="grid two align-start workspace-grid">
+    <article class="card setup-card">
       <h2>Autostart через launchd</h2>
       <p>Шаблон plist уже лежит в проекте:</p>
-      <p><code>{{ launchd_plist_path }}</code></p>
-      <ol class="plain-list">
+      <p><code class="break-any">{{ launchd_plist_path }}</code></p>
+      <div class="checklist-panel checklist-panel-compact">
+      <ol class="plain-list compact-list">
         <li>Подставьте абсолютные пути к проекту, `.venv` и `var/`.</li>
         <li>Скопируйте plist в `~/Library/LaunchAgents/`.</li>
         <li>Загрузите агент через `launchctl load` или перезайдите в сессию macOS.</li>
         <li>Проверьте логи, если сервис не стартует.</li>
       </ol>
+      </div>
       <p class="note">Текущий шаблон рассчитан на локальный single-user сценарий.</p>
     </article>
 
-    <article class="card">
+    <article class="card setup-card">
       <h2>Backup / Restore конфигурации</h2>
       <dl class="key-value">
         <div><dt>SQLite</dt><dd><code class="break-any">{{ db_path }}</code></dd></div>
         <div><dt>Логи</dt><dd><code class="break-any">{{ logs_dir }}</code></dd></div>
         <div><dt>Runtime snapshots</dt><dd><code class="break-any">{{ runtime_dir }}</code></dd></div>
       </dl>
-      <ol class="plain-list">
+      <div class="checklist-panel checklist-panel-compact">
+      <ol class="plain-list compact-list">
         <li>Для резервной копии сохраните `app.db` и при необходимости каталог `logs/`.</li>
         <li>Секреты живут в `macOS Keychain`, поэтому отдельно экспортировать их нужно своим способом.</li>
         <li>При переносе на другой Mac сначала восстановите `SQLite`, потом перепроверьте профили и remote.</li>
         <li>После восстановления вручную проверьте `Yandex`, `S3` и смонтированные локальные пути.</li>
       </ol>
+      </div>
     </article>
   </section>
 
-  <section class="card">
+  <section class="card setup-card">
     <h2>Типовые проблемы</h2>
-    <table>
+    <div class="table-wrap">
+    <table class="setup-table">
       <thead>
         <tr>
           <th>Симптом</th>
@@ -94,5 +103,6 @@
         </tr>
       </tbody>
     </table>
+    </div>
   </section>
 {% endblock %}

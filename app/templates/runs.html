@@ -20,10 +20,15 @@
     {% if interrupted_runs %}
       <div class="stack recovery-stack">
         {% for run in interrupted_runs %}
-          <div class="callout callout-warn">
+          <div class="callout callout-warn recovery-callout">
             <strong>{{ run.job.name if run.job else ("Задача #" ~ run.job_id) }}</strong>
             <p>{{ run.summary }}</p>
-            <div class="actions">
+            <ul class="plain-list compact-list recovery-list">
+              {% for item in interrupted_run_recovery_steps(run) %}
+                <li>{{ item }}</li>
+              {% endfor %}
+            </ul>
+            <div class="actions recovery-actions">
               <a class="button secondary small" href="/runs/{{ run.id }}">Открыть запуск</a>
               {% if run.job %}
                 <form method="post" action="/runs/{{ run.id }}/retry">
@@ -35,6 +40,10 @@
         {% endfor %}
       </div>
     {% endif %}
+    <div class="callout callout-info">
+      <strong>Как читать recovery на этой странице</strong>
+      <p>Если run отмечен как `прервано`, это означает, что приложение сохранило последний известный прогресс и предлагает безопасный повторный `copy` с дельты. Возврат к уже живому `rclone` процессу не поддерживается.</p>
+    </div>
     {% if runs %}
       <div class="table-wrap">
       <table class="runs-table">
@@ -82,16 +91,25 @@
               <td>{{ run.finished_at or "-" }}</td>
               <td>{{ run.files_transferred }} файлов / {{ format_bytes(run.bytes_transferred) }}</td>
               <td>
-                {{ run.summary }}
-                {% if run.status == "interrupted" %}
-                  <div class="table-note">Можно безопасно повторить задачу: recovery идет через повторный `copy` с дельты, без удаления уже переданных данных.</div>
-                {% endif %}
+                <div class="run-summary-cell">
+                  <div>{{ run.summary }}</div>
+                  {% if run.status == "interrupted" %}
+                    <div class="table-note run-summary-note">Можно безопасно повторить задачу: recovery идет через повторный `copy` с дельты, без удаления уже переданных данных и без `re-attach` к старому процессу.</div>
+                  {% endif %}
+                </div>
               </td>
               <td>
                 {% if run.job %}
-                  <form method="post" action="/jobs/{{ run.job.id }}/run">
-                    <button class="button secondary small" type="submit">Повторить с дельты</button>
-                  </form>
+                  <div class="run-recovery-cell">
+                    {% if job_requires_manual_start_checklist(run.job) %}
+                      <a class="button secondary small" href="/jobs/{{ run.job.id }}/start">Checklist и запуск</a>
+                    {% else %}
+                      <form method="post" action="/jobs/{{ run.job.id }}/run">
+                        <button class="button secondary small" type="submit">Повторить с дельты</button>
+                      </form>
+                    {% endif %}
+                    <a class="button secondary small" href="/runs/{{ run.id }}">Детали</a>
+                  </div>
                 {% else %}
                   <span class="muted">—</span>
                 {% endif %}

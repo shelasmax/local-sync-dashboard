@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 
 {% block content %}
-  <section class="grid two align-start">
-    <article class="card">
+  <section class="grid two align-start workspace-grid">
+    <article class="card setup-card">
       <h2>Чеклист подготовки</h2>
       <dl class="key-value">
         <div><dt>rclone установлен</dt><dd>{{ "да" if diagnostics.rclone_available else "нет" }}</dd></div>
@@ -13,7 +13,7 @@
       </dl>
       {% if diagnostics.issues %}
         <h3>Что еще не готово</h3>
-        <ul class="plain-list">
+        <ul class="plain-list compact-list">
           {% for issue in diagnostics.issues %}
             <li>{{ issue }}</li>
           {% endfor %}
@@ -23,30 +23,32 @@
       {% endif %}
     </article>
 
-    <article class="card">
+    <article class="card setup-card">
       <h2>Следующие шаги</h2>
-      <ol class="plain-list">
+      <div class="checklist-panel checklist-panel-compact">
+      <ol class="plain-list compact-list">
         <li>Настройте remote-подключения `rclone` для Яндекс Диска и S3 через `rclone config`.</li>
         <li>Создайте профили хранилищ в приложении, используя remote-имена или локальные пути ниже.</li>
         <li>Создайте однонаправленную задачу `copy` и сначала запустите ее вручную.</li>
       </ol>
+      </div>
       <p class="note">Используйте точные имена remote без ручного редактирования SQLite.</p>
     </article>
   </section>
 
   <section class="card">
     <h2>Важно для облачных маршрутов</h2>
-    <div class="callout callout-info">
+    <div class="callout callout-info recovery-callout">
       <strong>S3 -> Яндекс Диск и другие cloud-to-cloud сценарии идут через этот Mac</strong>
       <p>`rclone` работает локально: читает данные из source и потом отправляет их в target. Это значит, что скорость зависит от локального интернета, а sleep или перезагрузка Mac остановят текущий перенос.</p>
     </div>
   </section>
 
-  <section class="grid two align-start">
-    <article class="card">
+  <section class="grid two align-start workspace-grid">
+    <article class="card setup-card">
       <h2>Найденные remote</h2>
       {% if diagnostics.remotes %}
-        <ul class="plain-list">
+        <ul class="plain-list compact-list">
           {% for remote in diagnostics.remotes %}
             <li><code>{{ remote }}:</code></li>
           {% endfor %}
@@ -63,14 +65,14 @@ yadisk:
 s3home:</pre>
     </article>
 
-    <article class="card">
+    <article class="card setup-card">
       <h2>Найденные локальные пути</h2>
 
       <h3>iCloud Drive</h3>
       {% if diagnostics.local_candidates["icloud"] %}
-        <ul class="plain-list">
+        <ul class="plain-list compact-list">
           {% for path in diagnostics.local_candidates["icloud"] %}
-            <li><code>{{ path }}</code></li>
+            <li><code class="break-any">{{ path }}</code></li>
           {% endfor %}
         </ul>
       {% else %}
@@ -79,9 +81,9 @@ s3home:</pre>
 
       <h3>Google Drive</h3>
       {% if diagnostics.local_candidates["google_drive"] %}
-        <ul class="plain-list">
+        <ul class="plain-list compact-list">
           {% for path in diagnostics.local_candidates["google_drive"] %}
-            <li><code>{{ path }}</code></li>
+            <li><code class="break-any">{{ path }}</code></li>
           {% endfor %}
         </ul>
       {% else %}
@@ -90,9 +92,9 @@ s3home:</pre>
 
       <h3>Смонтированные тома / NAS-шары</h3>
       {% if diagnostics.local_candidates["mounted_volumes"] %}
-        <ul class="plain-list">
+        <ul class="plain-list compact-list">
           {% for path in diagnostics.local_candidates["mounted_volumes"] %}
-            <li><code>{{ path }}</code></li>
+            <li><code class="break-any">{{ path }}</code></li>
           {% endfor %}
         </ul>
       {% else %}
@@ -107,7 +109,8 @@ s3home:</pre>
       <a class="button secondary" href="/profiles">Открыть форму профиля</a>
     </div>
     {% if suggestions %}
-      <table>
+      <div class="table-wrap">
+      <table class="setup-table">
         <thead>
           <tr>
             <th>Рекомендуемое имя</th>
@@ -122,7 +125,7 @@ s3home:</pre>
             <tr>
               <td>{{ item.name }}</td>
               <td>{{ profile_type_label(item.profile_type) }}</td>
-              <td><code>{{ item.path }}</code></td>
+              <td><code class="break-any">{{ item.path }}</code></td>
               <td>{{ item.description }}</td>
               <td>
                 <form method="get" action="/profiles">
@@ -136,6 +139,7 @@ s3home:</pre>
           {% endfor %}
         </tbody>
       </table>
+      </div>
     {% else %}
       <p class="empty-state">Пока нечего предлагать автоматически. Сначала настройте remote или подключите локальные источники.</p>
     {% endif %}
@@ -147,7 +151,8 @@ s3home:</pre>
       <a class="button secondary" href="/jobs">Открыть форму задач</a>
     </div>
     {% if job_templates %}
-      <table>
+      <div class="table-wrap">
+      <table class="setup-table">
         <thead>
           <tr>
             <th>Шаблон</th>
@@ -174,6 +179,7 @@ s3home:</pre>
           {% endfor %}
         </tbody>
       </table>
+      </div>
     {% elif profiles_count > 0 %}
       <p class="empty-state">Создайте еще хотя бы один профиль, и приложение предложит типовые маршруты для задач.</p>
     {% else %}

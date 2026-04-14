@@ -101,15 +101,24 @@
       </div>
       <div class="stack">
         {% for run in interrupted_runs %}
-          <div class="callout callout-warn">
+          <div class="callout callout-warn recovery-callout">
             <strong>{{ run.job.name if run.job else ("Задача #" ~ run.job_id) }}</strong>
             <p>{{ run.summary }}</p>
-            <div class="actions">
+            <ul class="plain-list compact-list recovery-list">
+              {% for item in interrupted_run_recovery_steps(run)[:2] %}
+                <li>{{ item }}</li>
+              {% endfor %}
+            </ul>
+            <div class="actions recovery-actions">
               <a class="button secondary small" href="/runs/{{ run.id }}">Открыть запуск</a>
               {% if run.job %}
-                <form method="post" action="/runs/{{ run.id }}/retry">
-                  <button class="button secondary small" type="submit">Повторить с дельты</button>
-                </form>
+                {% if job_requires_manual_start_checklist(run.job) %}
+                  <a class="button secondary small" href="/jobs/{{ run.job.id }}/start">Checklist и запуск</a>
+                {% else %}
+                  <form method="post" action="/runs/{{ run.id }}/retry">
+                    <button class="button secondary small" type="submit">Повторить с дельты</button>
+                  </form>
+                {% endif %}
               {% endif %}
             </div>
           </div>
@@ -124,7 +133,8 @@
       <a class="button secondary" href="/runs">Открыть историю</a>
     </div>
     {% if recent_runs %}
-      <table>
+      <div class="table-wrap">
+      <table class="recent-runs-table">
         <thead>
           <tr>
             <th>ID</th>
@@ -138,14 +148,27 @@
           {% for run in recent_runs %}
             <tr>
               <td><a href="/runs/{{ run.id }}">#{{ run.id }}</a></td>
-              <td>{{ run.job.name if run.job else run.job_id }}</td>
+              <td>
+                <strong>{{ run.job.name if run.job else run.job_id }}</strong>
+                {% if run.status == "interrupted" %}
+                  <div class="table-note run-summary-note">Для этого запуска доступен безопасный repeat-from-delta через историю запусков.</div>
+                {% endif %}
+              </td>
               <td><span class="badge badge-{{ run.status }}">{{ status_label(run.status) }}</span></td>
               <td>{{ run.started_at }}</td>
-              <td>{{ run.summary }}</td>
+              <td>
+                <div class="run-summary-cell">
+                  <div>{{ run.summary }}</div>
+                  {% if run.status == "interrupted" %}
+                    <div class="table-note run-summary-note">Recovery без `re-attach`: после исправления причины используйте повторный `copy` с дельты.</div>
+                  {% endif %}
+                </div>
+              </td>
             </tr>
           {% endfor %}
         </tbody>
       </table>
+      </div>
     {% else %}
       <p class="empty-state">Запусков синхронизации пока не было.</p>
     {% endif %}

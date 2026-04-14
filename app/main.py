@@ -206,6 +206,23 @@ def job_pre_run_checklist(
     return items
 
 
+def interrupted_run_recovery_steps(run: RunHistory) -> list[str]:
+    steps = [
+        "Проверьте причину прерывания: sleep, пропавшая сеть, недоступный remote или отвалившийся mount path.",
+        "Ориентируйтесь на последний известный прогресс в этом запуске: уже переданные файлы повторно удаляться не будут.",
+    ]
+    if run.job and (is_remote_profile(run.job.source_profile) or is_remote_profile(run.job.target_profile)):
+        steps.append("Для длинного повторного запуска выберите окно, в котором Mac не уснет и интернет будет стабильным.")
+    steps.append("После исправления причины используйте «Повторить с дельты» или повторный ручной запуск задачи.")
+    return steps
+
+
+def job_requires_manual_start_checklist(job: SyncJob | None) -> bool:
+    if not job:
+        return False
+    return is_remote_profile(job.source_profile) or is_remote_profile(job.target_profile)
+
+
 def suggested_profiles(diagnostics) -> list[dict[str, str]]:
     suggestions: list[dict[str, str]] = []
     for path in diagnostics.local_candidates["icloud"]:
@@ -597,6 +614,8 @@ def index(request: Request, session: Session = Depends(get_session)):
             "format_bytes": format_bytes,
             "format_speed": format_speed,
             "format_eta": format_eta,
+            "interrupted_run_recovery_steps": interrupted_run_recovery_steps,
+            "job_requires_manual_start_checklist": job_requires_manual_start_checklist,
         },
     )
 
@@ -870,6 +889,8 @@ def jobs_page(request: Request, error: str = "", preview_job_id: int | None = No
             "pre_run_checklist": pre_run_checklist,
             "job_transfer_warning": job_transfer_warning,
             "job_pre_run_checklist": job_pre_run_checklist,
+            "interrupted_run_recovery_steps": interrupted_run_recovery_steps,
+            "job_requires_manual_start_checklist": job_requires_manual_start_checklist,
             "job_templates": suggested_job_templates(profiles),
         },
     )
@@ -904,6 +925,29 @@ def create_job_html(
     job = create_job(session, payload)
     job_runner.sync_job(job.id)
     return RedirectResponse(url="/jobs", status_code=303)
+
+
+@app.get("/jobs/{job_id}/start", response_class=HTMLResponse)
+def manual_start_page(job_id: int, request: Request, session: Session = Depends(get_session)):
+    job = session.get(
+        SyncJob,
+        job_id,
+        options=(selectinload(SyncJob.source_profile), selectinload(SyncJob.target_profile)),
+    )
+    if not job:
+        raise HTTPException(status_code=404, detail="Задача не найдена.")
+    return templates.TemplateResponse(
+        request=request,
+        name="manual_start.html",
+        context={
+            "request": request,
+            "job": job,
+            "transfer_warning": job_transfer_warning(job.source_profile, job.target_profile),
+            "pre_run_checklist": job_pre_run_checklist(job.source_profile, job.target_profile),
+            "requires_checklist": job_requires_manual_start_checklist(job),
+            "describe_schedule": describe_schedule,
+        },
+    )
 
 
 @app.post("/jobs/{job_id}/run")
@@ -986,6 +1030,8 @@ def runs_page(request: Request, error: str = "", session: Session = Depends(get_
             "format_speed": format_speed,
             "format_eta": format_eta,
             "job_transfer_warning": job_transfer_warning,
+            "interrupted_run_recovery_steps": interrupted_run_recovery_steps,
+            "job_requires_manual_start_checklist": job_requires_manual_start_checklist,
             "error": error,
         },
     )
@@ -1009,6 +1055,8 @@ def run_detail_page(run_id: int, request: Request, session: Session = Depends(ge
             "format_bytes": format_bytes,
             "format_speed": format_speed,
             "format_eta": format_eta,
+            "interrupted_run_recovery_steps": interrupted_run_recovery_steps,
+            "job_requires_manual_start_checklist": job_requires_manual_start_checklist,
             "transfer_warning": job_transfer_warning(
                 run.job.source_profile if run.job else None,
                 run.job.target_profile if run.job else None,

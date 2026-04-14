@@ -50,13 +50,25 @@
         {% endif %}
       </div>
     {% elif run.status == "interrupted" %}
-      <div class="callout callout-warn">
+      <div class="callout callout-warn recovery-callout">
         <strong>Запуск был прерван.</strong>
         <p>Приложение сохранило последний известный прогресс. Recovery в этом проекте всегда идет через повторный `copy` только для оставшейся дельты; `re-attach` к старому процессу не используется.</p>
+        <ul class="plain-list compact-list recovery-list">
+          {% for item in interrupted_run_recovery_steps(run) %}
+            <li>{{ item }}</li>
+          {% endfor %}
+        </ul>
         {% if run.job %}
-          <form method="post" action="/jobs/{{ run.job.id }}/run">
-            <button class="button secondary small" type="submit">Повторить задачу</button>
-          </form>
+          <div class="actions recovery-actions">
+            {% if job_requires_manual_start_checklist(run.job) %}
+              <a class="button secondary small" href="/jobs/{{ run.job.id }}/start">Открыть checklist перед повтором</a>
+            {% else %}
+              <form method="post" action="/jobs/{{ run.job.id }}/run">
+                <button class="button secondary small" type="submit">Повторить задачу</button>
+              </form>
+            {% endif %}
+            <a class="button secondary small" href="/runs">Назад к истории</a>
+          </div>
         {% endif %}
       </div>
     {% endif %}
