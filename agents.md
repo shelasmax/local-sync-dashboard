@@ -76,10 +76,10 @@ rclone lsf "S3 Beget:bucket-name" --max-depth 1
 
 ## Current Priorities
 
-1. Dry-run preview перед первым большим переносом
-2. Recovery UX для `interrupted` задач и понятный repeat-from-delta flow
-3. Решение по re-attach к живому `rclone` процессу после рестарта
-4. Улучшение UX и диагностики ошибок профилей
+1. Решение по re-attach к живому `rclone` процессу после рестарта
+2. Улучшение UX и диагностики ошибок профилей
+3. Более явные cloud-to-cloud подсказки про локальный путь трафика
+4. Операционная документация: recovery, launchd и backup/restore
 
 ## Definition of Done
 

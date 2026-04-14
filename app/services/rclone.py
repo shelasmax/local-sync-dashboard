@@ -34,6 +34,13 @@ class RcloneResult:
 
 
 @dataclass(slots=True)
+class RcloneSizeResult:
+    bytes_total: int = 0
+    files_total: int = 0
+    command_preview: str = ""
+
+
+@dataclass(slots=True)
 class RcloneProgress:
     bytes_transferred: int = 0
     total_bytes: int = 0
@@ -62,6 +69,7 @@ def build_copy_command(
     filters: list[str] | None = None,
     bandwidth_limit: str | None = None,
     verify_checksum: bool = False,
+    dry_run: bool = False,
 ) -> list[str]:
     command = [
         "rclone",
@@ -76,6 +84,8 @@ def build_copy_command(
     ]
     if verify_checksum:
         command.append("--checksum")
+    if dry_run:
+        command.append("--dry-run")
     if bandwidth_limit:
         command.extend(["--bwlimit", bandwidth_limit])
     for filter_rule in filters or []:
@@ -104,6 +114,25 @@ def test_remote(endpoint: str, timeout_seconds: int = 30) -> RcloneResult:
         fallback_result.stdout,
         "\n".join(part for part in [result.stderr, fallback_result.stderr] if part),
         shlex.join(fallback),
+    )
+
+
+def estimate_size(endpoint: str, filters: list[str] | None = None, timeout_seconds: int = 60) -> RcloneSizeResult:
+    ensure_available()
+    command = ["rclone", "size", endpoint, "--json"]
+    for filter_rule in filters or []:
+        command.extend(["--filter", filter_rule])
+    result = subprocess.run(command, capture_output=True, text=True, check=False, timeout=timeout_seconds)
+    if result.returncode != 0:
+        raise RcloneError(result.stderr.strip() or f"rclone size завершился с кодом {result.returncode}")
+    try:
+        payload = json.loads(result.stdout or "{}")
+    except json.JSONDecodeError as exc:
+        raise RcloneError("Не удалось разобрать ответ rclone size.") from exc
+    return RcloneSizeResult(
+        bytes_total=int(payload.get("bytes", 0) or 0),
+        files_total=int(payload.get("count", 0) or 0),
+        command_preview=shlex.join(command),
     )
 
 

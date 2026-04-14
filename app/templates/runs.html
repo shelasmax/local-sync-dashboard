@@ -14,6 +14,27 @@
       <h2>История запусков</h2>
       <span class="note">Сначала новые. Активные задачи обновляются автоматически.</span>
     </div>
+    {% if error %}
+      <p class="empty-state">{{ error }}</p>
+    {% endif %}
+    {% if interrupted_runs %}
+      <div class="stack recovery-stack">
+        {% for run in interrupted_runs %}
+          <div class="callout callout-warn">
+            <strong>{{ run.job.name if run.job else ("Задача #" ~ run.job_id) }}</strong>
+            <p>{{ run.summary }}</p>
+            <div class="actions">
+              <a class="button secondary small" href="/runs/{{ run.id }}">Открыть запуск</a>
+              {% if run.job %}
+                <form method="post" action="/runs/{{ run.id }}/retry">
+                  <button class="button secondary small" type="submit">Повторить с дельты</button>
+                </form>
+              {% endif %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
     {% if runs %}
       <div class="table-wrap">
       <table class="runs-table">

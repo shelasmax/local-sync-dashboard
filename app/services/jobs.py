@@ -20,7 +20,11 @@ from app.services.profiles import storage_endpoint
 from app.services.rclone import (
     RcloneError,
     RcloneProgress,
+    RcloneResult,
+    RcloneSizeResult,
     build_copy_command,
+    estimate_size,
+    execute,
     execute_with_progress,
     is_available,
 )
@@ -67,6 +71,23 @@ class JobDeleteError(RuntimeError):
     pass
 
 
+@dataclass(slots=True)
+class JobPreview:
+    job_id: int
+    job_name: str
+    source: str
+    target: str
+    command_preview: str
+    size_command_preview: str
+    source_bytes: int
+    source_files: int
+    dry_run_result: RcloneResult
+
+
+class RunRecoveryError(RuntimeError):
+    pass
+
+
 def delete_job(session, job_id: int, runner: "JobRunner") -> None:
     job = session.get(SyncJob, job_id)
     if not job:
@@ -77,6 +98,59 @@ def delete_job(session, job_id: int, runner: "JobRunner") -> None:
     session.delete(job)
     session.commit()
     runner.sync_job(job_id)
+
+
+def retry_run(session, run_id: int, runner: "JobRunner") -> tuple[int, str]:
+    run = session.get(RunHistory, run_id)
+    if not run:
+        raise LookupError("Запуск не найден.")
+    if run.status != RunStatus.INTERRUPTED.value:
+        raise RunRecoveryError("Повтор через recovery доступен только для прерванных запусков.")
+
+    job = session.get(SyncJob, run.job_id)
+    if not job:
+        raise RunRecoveryError("У этого запуска больше нет связанной задачи.")
+
+    ok, message = runner.enqueue_job(job.id, initiated_by="manual")
+    if not ok:
+        raise RunRecoveryError(message)
+    return job.id, message
+
+
+def preview_job(session, job_id: int, timeout_seconds: int = 60) -> JobPreview:
+    job = session.get(SyncJob, job_id)
+    if not job:
+        raise LookupError("Задача не найдена.")
+
+    source_profile = session.get(StorageProfile, job.source_profile_id)
+    target_profile = session.get(StorageProfile, job.target_profile_id)
+    if not source_profile or not target_profile:
+        raise LookupError("Не найден профиль источника или назначения.")
+
+    source = storage_endpoint(source_profile, job.source_path)
+    target = storage_endpoint(target_profile, job.target_path)
+    filters = decode_json(job.filters_json, [])
+    size_result: RcloneSizeResult = estimate_size(source, filters=filters, timeout_seconds=timeout_seconds)
+    dry_run_command = build_copy_command(
+        source=source,
+        target=target,
+        filters=filters,
+        bandwidth_limit=job.bandwidth_limit,
+        verify_checksum=job.verify_checksum,
+        dry_run=True,
+    )
+    dry_run_result = execute(dry_run_command, timeout_seconds=timeout_seconds)
+    return JobPreview(
+        job_id=job.id,
+        job_name=job.name,
+        source=source,
+        target=target,
+        command_preview=dry_run_result.command_preview,
+        size_command_preview=size_result.command_preview,
+        source_bytes=size_result.bytes_total,
+        source_files=size_result.files_total,
+        dry_run_result=dry_run_result,
+    )
 
 
 @dataclass(slots=True)

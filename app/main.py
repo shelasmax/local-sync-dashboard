@@ -26,7 +26,17 @@ from app.schemas import (
     SyncJobRead,
 )
 from app.services.common import decode_json
-from app.services.jobs import JobDeleteError, create_job, delete_job, init_settings, job_runner
+from app.services.jobs import (
+    JobDeleteError,
+    RunRecoveryError,
+    create_job,
+    delete_job,
+    init_settings,
+    job_runner,
+    preview_job,
+    retry_run,
+)
+from app.services.rclone import RcloneError
 from app.services.profiles import (
     ProfileConflictError,
     ProfileInUseError,
@@ -360,10 +370,21 @@ def _list_runs(session: Session, limit: int = 50) -> list[RunHistory]:
     ).all()
 
 
+def _list_interrupted_runs(session: Session, limit: int = 5) -> list[RunHistory]:
+    return session.scalars(
+        select(RunHistory)
+        .options(selectinload(RunHistory.job))
+        .where(RunHistory.status == "interrupted")
+        .order_by(desc(RunHistory.started_at))
+        .limit(limit)
+    ).all()
+
+
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request, session: Session = Depends(get_session)):
     stats = job_runner.status()
     recent_runs = _list_runs(session, limit=10)
+    interrupted_runs = _list_interrupted_runs(session, limit=3)
     diagnostics = collect_setup_diagnostics()
     return templates.TemplateResponse(
         request=request,
@@ -372,6 +393,7 @@ def index(request: Request, session: Session = Depends(get_session)):
             "request": request,
             "stats": stats,
             "recent_runs": recent_runs,
+            "interrupted_runs": interrupted_runs,
             "diagnostics": diagnostics,
             "status_label": status_label,
             "format_bytes": format_bytes,
@@ -557,12 +579,19 @@ def delete_profile_html(profile_id: int, session: Session = Depends(get_session)
 
 
 @app.get("/jobs", response_class=HTMLResponse)
-def jobs_page(request: Request, error: str = "", session: Session = Depends(get_session)):
+def jobs_page(request: Request, error: str = "", preview_job_id: int | None = None, session: Session = Depends(get_session)):
     profiles = _list_profiles(session)
     jobs = _list_jobs(session)
+    interrupted_runs = _list_interrupted_runs(session, limit=5)
     schedule_examples = ["manual", "hourly", "daily", "weekly", "cron:0 6 * * *"]
     prefill = prefill_job_payload(request.query_params)
     active_runs = job_runner.active_run_snapshots()
+    preview = None
+    if preview_job_id is not None:
+        try:
+            preview = preview_job(session, preview_job_id)
+        except (LookupError, RcloneError) as exc:
+            error = str(exc)
     return templates.TemplateResponse(
         request=request,
         name="jobs.html",
@@ -581,6 +610,8 @@ def jobs_page(request: Request, error: str = "", session: Session = Depends(get_
             "format_speed": format_speed,
             "format_eta": format_eta,
             "error": error,
+            "preview": preview,
+            "interrupted_runs": interrupted_runs,
             "prefill": prefill,
             "job_templates": suggested_job_templates(profiles),
         },
@@ -626,6 +657,24 @@ def run_job_html(job_id: int):
     return RedirectResponse(url="/runs", status_code=303)
 
 
+@app.post("/runs/{run_id}/retry")
+def retry_run_html(run_id: int, session: Session = Depends(get_session)):
+    try:
+        retry_run(session, run_id, job_runner)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RunRecoveryError as exc:
+        query = urlencode({"error": str(exc)})
+        return RedirectResponse(url=f"/runs?{query}", status_code=303)
+    return RedirectResponse(url="/runs", status_code=303)
+
+
+@app.post("/jobs/{job_id}/preview")
+def preview_job_html(job_id: int):
+    query = urlencode({"preview_job_id": job_id})
+    return RedirectResponse(url=f"/jobs?{query}", status_code=303)
+
+
 @app.post("/jobs/{job_id}/pause")
 def pause_job_html(job_id: int, session: Session = Depends(get_session)):
     job = session.get(SyncJob, job_id)
@@ -662,9 +711,10 @@ def delete_job_html(job_id: int, session: Session = Depends(get_session)):
 
 
 @app.get("/runs", response_class=HTMLResponse)
-def runs_page(request: Request, session: Session = Depends(get_session)):
+def runs_page(request: Request, error: str = "", session: Session = Depends(get_session)):
     runs = _list_runs(session)
     active_runs = job_runner.active_run_snapshots()
+    interrupted_runs = _list_interrupted_runs(session, limit=5)
     return templates.TemplateResponse(
         request=request,
         name="runs.html",
@@ -673,10 +723,12 @@ def runs_page(request: Request, session: Session = Depends(get_session)):
             "runs": runs,
             "active_runs": active_runs,
             "has_active_runs": bool(active_runs),
+            "interrupted_runs": interrupted_runs,
             "status_label": status_label,
             "format_bytes": format_bytes,
             "format_speed": format_speed,
             "format_eta": format_eta,
+            "error": error,
         },
     )
 
@@ -782,6 +834,43 @@ def api_run_job(job_id: int):
     if not ok:
         raise HTTPException(status_code=409, detail=message)
     return {"ok": True, "message": message}
+
+
+@app.post("/api/runs/{run_id}/retry")
+def api_retry_run(run_id: int, session: Session = Depends(get_session)):
+    try:
+        job_id, message = retry_run(session, run_id, job_runner)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RunRecoveryError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"ok": True, "job_id": job_id, "message": message}
+
+
+@app.post("/api/jobs/{job_id}/preview")
+def api_preview_job(job_id: int, session: Session = Depends(get_session)):
+    try:
+        preview = preview_job(session, job_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RcloneError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {
+        "job_id": preview.job_id,
+        "job_name": preview.job_name,
+        "source": preview.source,
+        "target": preview.target,
+        "command_preview": preview.command_preview,
+        "size_command_preview": preview.size_command_preview,
+        "source_bytes": preview.source_bytes,
+        "source_files": preview.source_files,
+        "dry_run_ok": preview.dry_run_result.ok,
+        "dry_run_stdout": preview.dry_run_result.stdout,
+        "dry_run_stderr": preview.dry_run_result.stderr,
+        "dry_run_returncode": preview.dry_run_result.returncode,
+        "dry_run_bytes": preview.dry_run_result.bytes_transferred,
+        "dry_run_files": preview.dry_run_result.files_transferred,
+    }
 
 
 @app.post("/api/jobs/{job_id}/pause")

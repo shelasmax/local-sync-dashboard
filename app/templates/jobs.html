@@ -9,6 +9,31 @@
     </script>
   {% endif %}
 
+  {% if interrupted_runs %}
+    <section class="card">
+      <div class="section-header">
+        <h2>Нужно восстановить</h2>
+        <a class="button secondary" href="/runs">История запусков</a>
+      </div>
+      <div class="stack">
+        {% for run in interrupted_runs %}
+          <div class="callout callout-warn">
+            <strong>{{ run.job.name if run.job else ("Задача #" ~ run.job_id) }}</strong>
+            <p>{{ run.summary }}</p>
+            <div class="actions">
+              <a class="button secondary small" href="/runs/{{ run.id }}">Детали</a>
+              {% if run.job %}
+                <form method="post" action="/runs/{{ run.id }}/retry">
+                  <button class="button secondary small" type="submit">Повторить с дельты</button>
+                </form>
+              {% endif %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+  {% endif %}
+
   <section class="grid two align-start">
     <article class="card">
       <h2>Создать задачу синхронизации</h2>
@@ -146,6 +171,9 @@
                     <form method="post" action="/jobs/{{ job.id }}/run">
                       <button class="button small" type="submit">Запустить</button>
                     </form>
+                    <form method="post" action="/jobs/{{ job.id }}/preview">
+                      <button class="button secondary small" type="submit">Dry-run</button>
+                    </form>
                     {% if live %}
                       <form method="post" action="/jobs/{{ job.id }}/pause">
                         <button class="button secondary small" type="submit">Остановить</button>
@@ -178,6 +206,44 @@
       {% endif %}
     </article>
   </section>
+
+  {% if preview %}
+    <section class="card">
+      <div class="section-header">
+        <h2>Dry-run preview: {{ preview.job_name }}</h2>
+        <form method="get" action="/jobs">
+          <button class="button secondary small" type="submit">Скрыть preview</button>
+        </form>
+      </div>
+      <div class="grid two align-start">
+        <div>
+          <dl class="key-value">
+            <div><dt>Источник</dt><dd><code class="break-any">{{ preview.source }}</code></dd></div>
+            <div><dt>Назначение</dt><dd><code class="break-any">{{ preview.target }}</code></dd></div>
+            <div><dt>Файлов в источнике</dt><dd>{{ preview.source_files }}</dd></div>
+            <div><dt>Объем источника</dt><dd>{{ format_bytes(preview.source_bytes) }}</dd></div>
+            <div><dt>Dry-run статус</dt><dd>{{ "ok" if preview.dry_run_result.ok else "ошибка" }}</dd></div>
+          </dl>
+        </div>
+        <div>
+          <h3>Команды</h3>
+          <pre>{{ preview.size_command_preview }}</pre>
+          <pre>{{ preview.command_preview }}</pre>
+        </div>
+      </div>
+      <div class="grid two align-start">
+        <div>
+          <h3>Dry-run stdout</h3>
+          <pre>{{ preview.dry_run_result.stdout or "-" }}</pre>
+        </div>
+        <div>
+          <h3>Dry-run stderr</h3>
+          <pre>{{ preview.dry_run_result.stderr or "-" }}</pre>
+        </div>
+      </div>
+      <p class="note">Preview не переносит данные. Оценка по размеру показывает источник целиком, а dry-run показывает, как `rclone copy` видит предстоящие действия.</p>
+    </section>
+  {% endif %}
 
   <section class="card">
     <div class="section-header">
