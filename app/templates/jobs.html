@@ -184,8 +184,19 @@
                 <td>{{ job.mode }}</td>
                 <td>
                   {% set route_warning = job_transfer_warning(job.source_profile, job.target_profile) %}
+                  {% set run_checklist = job_pre_run_checklist(job.source_profile, job.target_profile) %}
                   {% if route_warning %}
                     <div class="table-note">{{ route_warning }}</div>
+                  {% endif %}
+                  {% if run_checklist %}
+                    <div class="checklist-panel">
+                      <strong>Перед запуском</strong>
+                      <ul class="plain-list compact-list">
+                        {% for item in run_checklist[:2] %}
+                          <li>{{ item }}</li>
+                        {% endfor %}
+                      </ul>
+                    </div>
                   {% endif %}
                   <div class="actions">
                     <form method="post" action="/jobs/{{ job.id }}/run">
@@ -235,6 +246,22 @@
           <button class="button secondary small" type="submit">Скрыть preview</button>
         </form>
       </div>
+      {% if preview_transfer_warning %}
+        <div class="callout callout-info">
+          <strong>Как пойдет трафик при реальном запуске</strong>
+          <p>{{ preview_transfer_warning }}</p>
+        </div>
+      {% endif %}
+      {% if preview_checklist %}
+        <div class="callout callout-info">
+          <strong>Что проверить перед нажатием «Запустить»</strong>
+          <ul class="plain-list">
+            {% for item in preview_checklist %}
+              <li>{{ item }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endif %}
       <div class="grid two align-start">
         <div>
           <dl class="key-value">

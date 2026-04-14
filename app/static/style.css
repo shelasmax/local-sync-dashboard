@@ -217,6 +217,14 @@ textarea {
   margin-top: 8px;
 }
 
+.compact-list {
+  padding-left: 18px;
+}
+
+.compact-list li + li {
+  margin-top: 4px;
+}
+
 .note,
 .muted {
   color: var(--muted);
@@ -354,6 +362,19 @@ code.break-any,
   color: var(--muted);
   font-size: 0.9rem;
   line-height: 1.35;
+}
+
+.checklist-panel {
+  margin: 10px 0 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(47, 111, 99, 0.16);
+  border-radius: 14px;
+  background: rgba(47, 111, 99, 0.06);
+}
+
+.checklist-panel strong {
+  display: block;
+  margin-bottom: 6px;
 }
 
 .profiles-table th:nth-child(1),

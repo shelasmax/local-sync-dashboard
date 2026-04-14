@@ -46,9 +46,11 @@ from app.services.profiles import (
     create_profile,
     delete_profile,
     deserialize_profile_options,
+    diagnostics_from_options,
     split_s3_remote_root,
     test_connection,
     update_profile,
+    user_profile_options,
 )
 from app.services.scheduling import describe_schedule
 from app.services.system import collect_setup_diagnostics
@@ -270,7 +272,7 @@ def build_profile_prefill(
     suggested_options_json: str = "{}",
     edit_profile_id: int | None = None,
 ) -> dict[str, Any]:
-    options = decode_json(suggested_options_json, {})
+    options = user_profile_options(decode_json(suggested_options_json, {}))
     s3_remote_name, s3_bucket, s3_prefix = split_s3_remote_root(suggested_root)
     return {
         "id": edit_profile_id,
@@ -285,6 +287,10 @@ def build_profile_prefill(
         "s3_region": str(options.get("region", "")),
         "s3_endpoint": str(options.get("endpoint", "")),
     }
+
+
+def profile_last_check(profile: StorageProfile) -> dict[str, Any]:
+    return diagnostics_from_options(deserialize_profile_options(profile))
 
 
 def normalize_profile_form_inputs(
@@ -513,6 +519,7 @@ def profiles_page(
             "profile_type_label": profile_type_label,
             "status_label": status_label,
             "profile_connection_hint": profile_connection_hint,
+            "profile_last_check": profile_last_check,
             "configured_remotes": configured_remotes,
             "prefill": build_profile_prefill(
                 suggested_name=suggested_name,
@@ -664,16 +671,30 @@ def jobs_page(request: Request, error: str = "", preview_job_id: int | None = No
     prefill = prefill_job_payload(request.query_params)
     active_runs = job_runner.active_run_snapshots()
     preview = None
+    preview_transfer_warning = ""
+    preview_checklist: list[str] = []
     if preview_job_id is not None:
         try:
             preview = preview_job(session, preview_job_id)
         except (LookupError, RcloneError) as exc:
             error = str(exc)
     indexed_profiles = {profile.id: profile for profile in profiles}
+    indexed_jobs = {job.id: job for job in jobs}
     source_profile = indexed_profiles.get(prefill["source_profile_id"]) if prefill["source_profile_id"] else None
     target_profile = indexed_profiles.get(prefill["target_profile_id"]) if prefill["target_profile_id"] else None
     transfer_warning = job_transfer_warning(source_profile, target_profile)
     pre_run_checklist = job_pre_run_checklist(source_profile, target_profile)
+    if preview:
+        preview_job_row = indexed_jobs.get(preview.job_id)
+        if preview_job_row:
+            preview_transfer_warning = job_transfer_warning(
+                preview_job_row.source_profile,
+                preview_job_row.target_profile,
+            )
+            preview_checklist = job_pre_run_checklist(
+                preview_job_row.source_profile,
+                preview_job_row.target_profile,
+            )
     return templates.TemplateResponse(
         request=request,
         name="jobs.html",
@@ -693,11 +714,14 @@ def jobs_page(request: Request, error: str = "", preview_job_id: int | None = No
             "format_eta": format_eta,
             "error": error,
             "preview": preview,
+            "preview_transfer_warning": preview_transfer_warning,
+            "preview_checklist": preview_checklist,
             "interrupted_runs": interrupted_runs,
             "prefill": prefill,
             "transfer_warning": transfer_warning,
             "pre_run_checklist": pre_run_checklist,
             "job_transfer_warning": job_transfer_warning,
+            "job_pre_run_checklist": job_pre_run_checklist,
             "job_templates": suggested_job_templates(profiles),
         },
     )

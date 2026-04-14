@@ -115,8 +115,17 @@
                 <td>
                   <span class="badge badge-{{ profile.status }}">{{ status_label(profile.status) }}</span>
                   {% set hint = profile_connection_hint(profile, configured_remotes) %}
+                  {% set last_check = profile_last_check(profile) %}
                   {% if hint %}
                     <div class="table-note">{{ hint }}</div>
+                  {% endif %}
+                  {% if last_check.message %}
+                    <div class="table-note">
+                      <strong>Последняя проверка:</strong> {{ last_check.message }}
+                    </div>
+                  {% endif %}
+                  {% if last_check.command_preview %}
+                    <div class="table-note"><code class="break-any">{{ last_check.command_preview }}</code></div>
                   {% endif %}
                 </td>
                 <td><span class="break-any">{{ profile.secret_ref or "нет" }}</span></td>

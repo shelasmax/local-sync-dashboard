@@ -21,6 +21,9 @@ class ProfileInUseError(ValueError):
     pass
 
 
+DIAGNOSTICS_KEY = "_diagnostics"
+
+
 @dataclass(slots=True)
 class ProfileCheckResult:
     profile_id: int
@@ -48,6 +51,33 @@ def build_s3_remote_root(remote_name: str, bucket: str = "", prefix: str = "") -
 
 def deserialize_profile_options(profile: StorageProfile) -> dict:
     return decode_json(profile.options_json, {})
+
+
+def user_profile_options(options: dict) -> dict:
+    sanitized = dict(options)
+    sanitized.pop(DIAGNOSTICS_KEY, None)
+    return sanitized
+
+
+def diagnostics_from_options(options: dict) -> dict:
+    payload = options.get(DIAGNOSTICS_KEY, {})
+    return payload if isinstance(payload, dict) else {}
+
+
+def apply_profile_diagnostics(
+    options: dict,
+    *,
+    ok: bool,
+    message: str,
+    command_preview: str | None,
+) -> dict:
+    merged = dict(user_profile_options(options))
+    merged[DIAGNOSTICS_KEY] = {
+        "ok": ok,
+        "message": message,
+        "command_preview": command_preview,
+    }
+    return merged
 
 
 def storage_endpoint(profile: StorageProfile, relative_path: str = "") -> str:
@@ -81,7 +111,7 @@ def build_connection_test_payload(profile: StorageProfile) -> ConnectionTestPayl
     return ConnectionTestPayload(
         profile_type=ProfileType(profile.profile_type),
         root_path_or_remote=profile.root_path_or_remote,
-        options=deserialize_profile_options(profile),
+        options=user_profile_options(deserialize_profile_options(profile)),
     )
 
 
@@ -92,6 +122,14 @@ def check_profile(session: Session, profile_id: int) -> ProfileCheckResult:
 
     ok, message, command_preview = test_connection(build_connection_test_payload(profile))
     profile.status = "ready" if ok else "unreachable"
+    profile.options_json = encode_json(
+        apply_profile_diagnostics(
+            deserialize_profile_options(profile),
+            ok=ok,
+            message=message,
+            command_preview=command_preview,
+        )
+    )
     session.commit()
     session.refresh(profile)
     return ProfileCheckResult(
@@ -116,14 +154,21 @@ def create_profile(session: Session, payload: StorageProfilePayload) -> StorageP
     if payload.secret:
         secret_ref = store_secret(payload.name, payload.secret)
 
-    ok, _, _ = test_connection(payload)
+    ok, message, command_preview = test_connection(payload)
     profile = StorageProfile(
         name=payload.name,
         profile_type=payload.profile_type.value,
         root_path_or_remote=root_path,
         status="ready" if ok else "unreachable",
         secret_ref=secret_ref,
-        options_json=encode_json(options),
+        options_json=encode_json(
+            apply_profile_diagnostics(
+                options,
+                ok=ok,
+                message=message,
+                command_preview=command_preview,
+            )
+        ),
     )
     session.add(profile)
     session.commit()
@@ -151,6 +196,7 @@ def update_profile(
     if existing:
         raise ProfileConflictError(f"Профиль с именем «{payload.name}» уже существует.")
 
+    existing_options = deserialize_profile_options(profile)
     options = dict(payload.options)
     root_path = payload.root_path_or_remote
     if payload.profile_type in {ProfileType.LOCAL_FOLDER, ProfileType.SYNOLOGY_SHARE}:
@@ -166,12 +212,19 @@ def update_profile(
             delete_secret(profile.secret_ref)
         profile.secret_ref = new_secret_ref
 
-    ok, _, _ = test_connection(payload)
+    ok, message, command_preview = test_connection(payload)
     profile.name = payload.name
     profile.profile_type = payload.profile_type.value
     profile.root_path_or_remote = root_path
     profile.status = "ready" if ok else "unreachable"
-    profile.options_json = encode_json(options)
+    profile.options_json = encode_json(
+        apply_profile_diagnostics(
+            {**existing_options, **options},
+            ok=ok,
+            message=message,
+            command_preview=command_preview,
+        )
+    )
     session.commit()
     session.refresh(profile)
     return profile

@@ -11,16 +11,18 @@ from sqlalchemy.orm import sessionmaker
 from app.database import Base
 from app.models import ProfileType, StorageProfile, SyncJob
 from app.schemas import StorageProfilePayload
-from app.services.common import encode_json
+from app.services.common import decode_json, encode_json
 from app.services.profiles import (
     build_s3_remote_root,
     check_profile,
+    diagnostics_from_options,
     ProfileConflictError,
     ProfileInUseError,
     create_profile,
     delete_profile,
     split_s3_remote_root,
     update_profile,
+    user_profile_options,
 )
 
 
@@ -169,7 +171,10 @@ class ProfilesServiceTest(unittest.TestCase):
 
         self.assertTrue(result.ok)
         self.assertIn("Локальный путь доступен", result.message)
-        self.assertEqual(self.session.get(StorageProfile, profile.id).status, "ready")
+        refreshed = self.session.get(StorageProfile, profile.id)
+        self.assertEqual(refreshed.status, "ready")
+        diagnostics = diagnostics_from_options(decode_json(refreshed.options_json, {}))
+        self.assertIn("Локальный путь доступен", diagnostics.get("message", ""))
 
     def test_check_profile_updates_status_to_unreachable(self):
         missing_dir = self.root / "missing-folder"
@@ -189,6 +194,26 @@ class ProfilesServiceTest(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertIn("Путь не существует", result.message)
         self.assertEqual(self.session.get(StorageProfile, profile.id).status, "unreachable")
+
+    def test_create_profile_hides_internal_diagnostics_from_user_options(self):
+        source_dir = self.root / "with-diagnostics"
+        source_dir.mkdir()
+        profile = create_profile(
+            self.session,
+            StorageProfilePayload(
+                name="Diagnostics",
+                profile_type=ProfileType.LOCAL_FOLDER,
+                root_path_or_remote=str(source_dir),
+                options={"provider": "custom"},
+            ),
+        )
+
+        stored_options = decode_json(profile.options_json, {})
+        options = user_profile_options(stored_options)
+        diagnostics = diagnostics_from_options(stored_options)
+
+        self.assertEqual(options, {"provider": "custom"})
+        self.assertTrue(diagnostics.get("ok"))
 
 
 if __name__ == "__main__":
