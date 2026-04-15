@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 import os
 import tempfile
 import unittest
@@ -19,8 +20,11 @@ from app.services.jobs import (
     JobConflictError,
     JobDeleteError,
     JobRunner,
+    RunDeleteError,
     RunRecoveryError,
     RunSnapshot,
+    cleanup_runs,
+    delete_run,
     delete_job,
     preview_job,
     retry_run,
@@ -113,6 +117,89 @@ class JobsServiceTest(unittest.TestCase):
             delete_job(self.session, job.id, self.runner)
 
         self.assertIsNotNone(self.session.get(SyncJob, job.id))
+
+    def test_delete_run_removes_log_for_finished_run(self):
+        job = self._create_job()
+        log_path = Path(self.tempdir.name) / "run.log"
+        log_path.write_text("run log", encoding="utf-8")
+        run = RunHistory(
+            job_id=job.id,
+            status=RunStatus.SUCCESS.value,
+            summary="done",
+            log_path=str(log_path),
+            started_at=datetime.now(UTC),
+            finished_at=datetime.now(UTC),
+        )
+        self.session.add(run)
+        self.session.commit()
+        self.session.refresh(run)
+
+        delete_run(self.session, run.id, self.runner)
+
+        self.assertIsNone(self.session.get(RunHistory, run.id))
+        self.assertFalse(log_path.exists())
+
+    def test_delete_run_rejects_running_run(self):
+        job = self._create_job()
+        run = RunHistory(
+            job_id=job.id,
+            status=RunStatus.RUNNING.value,
+            summary="running",
+            started_at=datetime.now(UTC),
+        )
+        self.session.add(run)
+        self.session.commit()
+        self.session.refresh(run)
+
+        with self.assertRaises(RunDeleteError):
+            delete_run(self.session, run.id, self.runner)
+
+    def test_cleanup_runs_filters_by_status_and_age(self):
+        job = self._create_job()
+        old_success_log = Path(self.tempdir.name) / "old-success.log"
+        old_success_log.write_text("ok", encoding="utf-8")
+        old_success = RunHistory(
+            job_id=job.id,
+            status=RunStatus.SUCCESS.value,
+            summary="old success",
+            log_path=str(old_success_log),
+            started_at=datetime.now(UTC) - timedelta(days=40),
+            finished_at=datetime.now(UTC) - timedelta(days=39),
+        )
+        recent_success = RunHistory(
+            job_id=job.id,
+            status=RunStatus.SUCCESS.value,
+            summary="recent success",
+            started_at=datetime.now(UTC) - timedelta(days=2),
+            finished_at=datetime.now(UTC) - timedelta(days=2),
+        )
+        old_failed = RunHistory(
+            job_id=job.id,
+            status=RunStatus.FAILED.value,
+            summary="old failed",
+            started_at=datetime.now(UTC) - timedelta(days=40),
+            finished_at=datetime.now(UTC) - timedelta(days=39),
+        )
+        self.session.add_all([old_success, recent_success, old_failed])
+        self.session.commit()
+
+        result = cleanup_runs(
+            self.session,
+            self.runner,
+            status=RunStatus.SUCCESS.value,
+            older_than_days=30,
+        )
+
+        self.assertEqual(result.deleted_runs, 1)
+        self.assertEqual(result.deleted_logs, 1)
+        remaining_statuses = {
+            run.summary: run.status
+            for run in self.session.query(RunHistory).filter(RunHistory.job_id == job.id).all()
+        }
+        self.assertIn("recent success", remaining_statuses)
+        self.assertIn("old failed", remaining_statuses)
+        self.assertNotIn("old success", remaining_statuses)
+        self.assertFalse(old_success_log.exists())
 
     def test_create_job_rejects_duplicate_name(self):
         self._create_job()

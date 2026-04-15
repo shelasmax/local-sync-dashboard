@@ -4,6 +4,23 @@
   {% if has_active_runs %}
     <script>
       (() => {
+        function initCollapsible(storageKey, toggleId, bodyId, defaultExpanded = true) {
+          const toggle = document.getElementById(toggleId);
+          const body = document.getElementById(bodyId);
+          if (!toggle || !body) return;
+          const saved = localStorage.getItem(storageKey);
+          let expanded = saved === null ? defaultExpanded : saved !== "collapsed";
+          function render() {
+            body.hidden = !expanded;
+            toggle.textContent = expanded ? "Скрыть" : "Показать";
+            localStorage.setItem(storageKey, expanded ? "expanded" : "collapsed");
+          }
+          toggle.addEventListener("click", () => {
+            expanded = !expanded;
+            render();
+          });
+          render();
+        }
         function fmtBytes(v) {
           if (!v) return "0 B";
           let a = Number(v), u = 0;
@@ -48,6 +65,30 @@
             });
           }).catch(() => {});
         }, 10000);
+        initCollapsible("jobs-recovery-section", "toggle-jobs-recovery", "jobs-recovery-body", true);
+      })();
+    </script>
+  {% elif interrupted_runs %}
+    <script>
+      (() => {
+        function initCollapsible(storageKey, toggleId, bodyId, defaultExpanded = true) {
+          const toggle = document.getElementById(toggleId);
+          const body = document.getElementById(bodyId);
+          if (!toggle || !body) return;
+          const saved = localStorage.getItem(storageKey);
+          let expanded = saved === null ? defaultExpanded : saved !== "collapsed";
+          function render() {
+            body.hidden = !expanded;
+            toggle.textContent = expanded ? "Скрыть" : "Показать";
+            localStorage.setItem(storageKey, expanded ? "expanded" : "collapsed");
+          }
+          toggle.addEventListener("click", () => {
+            expanded = !expanded;
+            render();
+          });
+          render();
+        }
+        initCollapsible("jobs-recovery-section", "toggle-jobs-recovery", "jobs-recovery-body", true);
       })();
     </script>
   {% endif %}
@@ -59,7 +100,8 @@
       <p class="page-lead">Сначала исправить маршрут, затем dry-run, потом новый `copy`.</p>
     </div>
     <div class="hero-actions">
-      <a class="button secondary" href="/runs">Открыть историю запусков</a>
+      <a class="button secondary" href="/runs">Открыть recovery</a>
+      <a class="button secondary" href="/runs/archive">Архив запусков ({{ archived_runs_count }})</a>
       <a class="button secondary" href="/setup">Проверить setup</a>
     </div>
   </section>
@@ -71,9 +113,16 @@
           <span class="section-kicker">Status</span>
           <h3>Нуждаются в восстановлении</h3>
         </div>
+        <div class="secondary-action-row">
+          <span class="panel-note">Показываем только последний run.</span>
+          <button class="button secondary" type="button" id="toggle-jobs-recovery">Скрыть</button>
+        </div>
+      </div>
+      <div class="panel-header">
+        <div></div>
         <a class="button secondary" href="/runs">Все recovery-сценарии</a>
       </div>
-      <div class="incident-list">
+      <div class="incident-list" id="jobs-recovery-body">
         {% for run in interrupted_runs %}
           <article class="incident-panel incident-warn">
             <div class="incident-main">
@@ -234,7 +283,7 @@
                         </form>
                       {% endif %}
                       {% if not live %}
-                        <form method="post" action="/jobs/{{ job.id }}/delete">
+                        <form method="post" action="/jobs/{{ job.id }}/delete" onsubmit="return confirm('Удалить задачу из приложения и связанную локальную историю запусков? Файлы в источнике и назначении затронуты не будут.');">
                           <button class="button tertiary icon-button" type="submit" title="Удалить" aria-label="Удалить">
                             <svg class="button-icon" aria-hidden="true"><use href="#icon-trash"></use></svg>
                             <span class="sr-only">Удалить</span>

@@ -1,6 +1,30 @@
 {% extends "base.html" %}
 
 {% block content %}
+  <script>
+    (() => {
+      function initCollapsible(storageKey, toggleId, bodyId, defaultExpanded = true) {
+        const toggle = document.getElementById(toggleId);
+        const body = document.getElementById(bodyId);
+        if (!toggle || !body) return;
+        const saved = localStorage.getItem(storageKey);
+        let expanded = saved === null ? defaultExpanded : saved !== "collapsed";
+        function render() {
+          body.hidden = !expanded;
+          toggle.textContent = expanded ? "Скрыть" : "Показать";
+          localStorage.setItem(storageKey, expanded ? "expanded" : "collapsed");
+        }
+        toggle.addEventListener("click", () => {
+          expanded = !expanded;
+          render();
+        });
+        render();
+      }
+      initCollapsible("index-incident-board", "toggle-index-incidents", "index-incidents-body", true);
+      initCollapsible("index-recovery-board", "toggle-index-recovery", "index-recovery-body", true);
+    })();
+  </script>
+
   <section class="page-hero compact-hero">
     <div>
       <p class="eyebrow">Overview</p>
@@ -9,7 +33,8 @@
     </div>
     <div class="hero-actions">
       <a class="button" href="/jobs">Перейти к задачам</a>
-      <a class="button secondary" href="/runs">Открыть историю запусков</a>
+      <a class="button secondary" href="/runs">Открыть recovery</a>
+      <a class="button secondary" href="/runs/archive">Архив запусков</a>
     </div>
   </section>
 
@@ -119,9 +144,12 @@
           <span class="section-kicker">Incident Board</span>
           <h3>Последние ошибки по задачам</h3>
         </div>
-        <a class="button secondary" href="/jobs">Исправить маршруты</a>
+        <div class="secondary-action-row">
+          <a class="button secondary" href="/jobs">Исправить маршруты</a>
+          <button class="button secondary" type="button" id="toggle-index-incidents">Скрыть</button>
+        </div>
       </div>
-      <div class="incident-list">
+      <div class="incident-list" id="index-incidents-body">
         {% for incident in incidents_by_job.values() %}
           {% set run = incident.run %}
           <article class="incident-panel incident-danger">
@@ -155,9 +183,12 @@
           <span class="section-kicker">Recovery</span>
           <h3>Нуждаются в повторе</h3>
         </div>
-        <a class="button secondary" href="/runs">Все recovery-сценарии</a>
+        <div class="secondary-action-row">
+          <a class="button secondary" href="/runs">Все recovery-сценарии</a>
+          <button class="button secondary" type="button" id="toggle-index-recovery">Скрыть</button>
+        </div>
       </div>
-      <div class="incident-list">
+      <div class="incident-list" id="index-recovery-body">
         {% for run in interrupted_runs %}
           <article class="incident-panel incident-warn">
             <div class="incident-main">
@@ -194,9 +225,12 @@
     <div class="panel-header">
       <div>
         <span class="section-kicker">Recent Runs</span>
-        <h3>Последние запуски</h3>
+        <h3>Короткая лента запусков</h3>
       </div>
-      <a class="button secondary" href="/runs">Вся история</a>
+      <div class="secondary-action-row">
+        <a class="button secondary" href="/runs">Операционный экран</a>
+        <a class="button secondary" href="/runs/archive">Архив ({{ archived_runs_count }})</a>
+      </div>
     </div>
     {% if recent_runs %}
       <div class="control-list">

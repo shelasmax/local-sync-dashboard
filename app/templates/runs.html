@@ -4,6 +4,23 @@
   {% if has_active_runs %}
     <script>
       (() => {
+        function initCollapsible(storageKey, toggleId, bodyId, defaultExpanded = true) {
+          const toggle = document.getElementById(toggleId);
+          const body = document.getElementById(bodyId);
+          if (!toggle || !body) return;
+          const saved = localStorage.getItem(storageKey);
+          let expanded = saved === null ? defaultExpanded : saved !== "collapsed";
+          function render() {
+            body.hidden = !expanded;
+            toggle.textContent = expanded ? "Скрыть" : "Показать";
+            localStorage.setItem(storageKey, expanded ? "expanded" : "collapsed");
+          }
+          toggle.addEventListener("click", () => {
+            expanded = !expanded;
+            render();
+          });
+          render();
+        }
         function fmtBytes(v) {
           if (!v) return "0 B";
           let a = Number(v), u = 0;
@@ -45,18 +62,45 @@
             });
           }).catch(() => {});
         }, 10000);
+        initCollapsible("runs-active-section", "toggle-active-runs", "active-runs-body", true);
+        initCollapsible("runs-recovery-section", "toggle-recovery-runs", "recovery-runs-body", true);
+      })();
+    </script>
+  {% elif true %}
+    <script>
+      (() => {
+        function initCollapsible(storageKey, toggleId, bodyId, defaultExpanded = true) {
+          const toggle = document.getElementById(toggleId);
+          const body = document.getElementById(bodyId);
+          if (!toggle || !body) return;
+          const saved = localStorage.getItem(storageKey);
+          let expanded = saved === null ? defaultExpanded : saved !== "collapsed";
+          function render() {
+            body.hidden = !expanded;
+            toggle.textContent = expanded ? "Скрыть" : "Показать";
+            localStorage.setItem(storageKey, expanded ? "expanded" : "collapsed");
+          }
+          toggle.addEventListener("click", () => {
+            expanded = !expanded;
+            render();
+          });
+          render();
+        }
+        initCollapsible("runs-active-section", "toggle-active-runs", "active-runs-body", true);
+        initCollapsible("runs-recovery-section", "toggle-recovery-runs", "recovery-runs-body", true);
       })();
     </script>
   {% endif %}
 
   <section class="page-hero compact-hero">
     <div>
-      <p class="eyebrow">Run History</p>
-      <h2>Запуски и recovery</h2>
-      <p class="page-lead">История запусков с понятным следующим шагом: исправить, повторить с дельты или проверить setup.</p>
+      <p class="eyebrow">Run Operations</p>
+      <h2>Текущие запуски и recovery</h2>
+      <p class="page-lead">Рабочий экран для активных, прерванных и проблемных запусков. Полная история вынесена в отдельный архив.</p>
     </div>
     <div class="hero-actions">
       <a class="button secondary" href="/jobs">Вернуться к задачам</a>
+      <a class="button secondary" href="/runs/archive">Архив запусков ({{ archived_runs_count }})</a>
     </div>
   </section>
 
@@ -74,6 +118,70 @@
     </section>
   {% endif %}
 
+  {% if active_run_cards %}
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <span class="section-kicker">Active</span>
+          <h3>Активные запуски</h3>
+        </div>
+        <div class="secondary-action-row">
+          <span class="panel-note">Здесь остаются только те run, у которых прямо сейчас есть live progress.</span>
+          <button class="button secondary" type="button" id="toggle-active-runs">Скрыть</button>
+        </div>
+      </div>
+      <div class="control-list runs-list" id="active-runs-body">
+        {% for item in active_run_cards %}
+          {% set run = item.run %}
+          {% set live = item.snapshot %}
+          {% set job = item.job %}
+          <article class="control-card run-card" data-job-id="{{ item.job_id }}">
+            <div class="run-card-layout">
+              <section class="run-card-main">
+                <div class="run-card-block">
+                  <span class="section-kicker">Status</span>
+                  <div class="status-line">
+                    <strong>{{ job.name if job else (run.job.name if run and run.job else item.job_id) }}</strong>
+                    <span class="badge badge-running">выполняется</span>
+                  </div>
+                  <div class="panel-note">Старт: {{ run.started_at if run else live.started_at }}</div>
+                  <div class="live-status compact">
+                    <div class="live-meta">
+                      <span>{{ format_bytes(live.bytes_transferred) }} из {{ format_bytes(live.total_bytes) }}</span>
+                      <span>{{ live.progress_percent }}%</span>
+                      <span>{{ format_speed(live.speed) }}</span>
+                      <span>{{ format_eta(live.eta_seconds) }}</span>
+                    </div>
+                    <div class="progress-bar" aria-label="Прогресс активного запуска">
+                      <span style="width: {{ live.progress_percent }}%;"></span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="run-card-block">
+                  <span class="section-kicker">Summary</span>
+                  <p>{{ live.summary or (run.summary if run else "Запуск выполняется.") }}</p>
+                </div>
+              </section>
+
+              <section class="run-card-actions">
+                <span class="section-kicker">Next Action</span>
+                <div class="action-stack">
+                  {% if run %}
+                    <a class="button" href="/runs/{{ run.id }}">Открыть запуск</a>
+                  {% endif %}
+                  {% if job %}
+                    <a class="button secondary" href="/jobs?edit_job_id={{ job.id }}">Открыть задачу</a>
+                  {% endif %}
+                </div>
+              </section>
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+    </section>
+  {% endif %}
+
   {% if interrupted_runs %}
     <section class="panel stack-panel">
       <div class="panel-header">
@@ -81,9 +189,16 @@
           <span class="section-kicker">Recovery</span>
           <h3>Прерванные запуски</h3>
         </div>
-        <span class="panel-note">`re-attach` не поддерживается; recovery идет через повторный `copy` с дельты.</span>
+        <div class="secondary-action-row">
+          <span class="panel-note">Показываем только последний interrupted run.</span>
+          <button class="button secondary" type="button" id="toggle-recovery-runs">Скрыть</button>
+        </div>
       </div>
-      <div class="incident-list">
+      <div class="panel-header">
+        <div></div>
+        <a class="button secondary" href="/runs/archive">Архив запусков</a>
+      </div>
+      <div class="incident-list" id="recovery-runs-body">
         {% for run in interrupted_runs %}
           <article class="incident-panel incident-warn">
             <div class="incident-main">
@@ -120,68 +235,43 @@
   <section class="panel">
     <div class="panel-header">
       <div>
-        <span class="section-kicker">History</span>
-        <h3>Лента запусков</h3>
+        <span class="section-kicker">Incidents</span>
+        <h3>Последние ошибки и блокировки</h3>
       </div>
-      <span class="panel-note">Сначала новые. Для каждого запуска видны причина, маршрут и следующий безопасный шаг.</span>
+      <div class="secondary-action-row">
+        <a class="button secondary" href="/jobs">Исправить маршруты</a>
+        <a class="button secondary" href="/runs/archive">Открыть архив</a>
+      </div>
     </div>
-    {% if runs %}
+    {% if incident_runs %}
       <div class="control-list runs-list">
-        {% for run in runs %}
-          {% set live = active_runs.get(run.job_id) %}
-          {% set incident = incidents_by_job.get(run.job_id) if run.job_id else None %}
+        {% for run in incident_runs %}
           <article class="control-card run-card" data-job-id="{{ run.job_id }}">
             <div class="run-card-layout">
               <section class="run-card-main">
                 <div class="run-card-block">
-                <span class="section-kicker">Status</span>
-                <div class="status-line">
-                  <strong>{{ run.job.name if run.job else run.job_id }}</strong>
-                  <span class="badge badge-{{ run.status }}">{{ status_label(run.status) }}</span>
-                </div>
-                <div class="panel-note">Старт: {{ run.started_at }}</div>
-                <div class="panel-note">Файлы: {{ run.files_transferred }} · {{ format_bytes(run.bytes_transferred) }}</div>
-                {% if live and live.run_id == run.id %}
-                  <div class="live-status compact">
-                    <div class="live-meta">
-                      <span>{{ format_bytes(live.bytes_transferred) }} из {{ format_bytes(live.total_bytes) }}</span>
-                      <span>{{ live.progress_percent }}%</span>
-                      <span>{{ format_speed(live.speed) }}</span>
-                      <span>{{ format_eta(live.eta_seconds) }}</span>
-                    </div>
-                    <div class="progress-bar" aria-label="Прогресс активного запуска">
-                      <span style="width: {{ live.progress_percent }}%;"></span>
-                    </div>
+                  <span class="section-kicker">Status</span>
+                  <div class="status-line">
+                    <strong>{{ run.job.name if run.job else run.job_id }}</strong>
+                    <span class="badge badge-{{ run.status }}">{{ status_label(run.status) }}</span>
                   </div>
-                {% endif %}
+                  <div class="panel-note">Старт: {{ run.started_at }}</div>
+                  <div class="panel-note">Файлы: {{ run.files_transferred }} · {{ format_bytes(run.bytes_transferred) }}</div>
                 </div>
 
                 <div class="run-card-block">
-                <span class="section-kicker">Summary</span>
-                <p>{{ run.summary }}</p>
-                {% if incident and incident.run and incident.run.id == run.id and incident.streak > 1 %}
-                  <div class="incident-panel incident-danger compact-incident">
-                    <div class="incident-main">
-                      <span class="status-dot status-failed"></span>
-                      <div>
-                        <strong>Повторяющаяся причина</strong>
-                        <p>Та же ошибка встречается {{ incident.streak }} раза подряд.</p>
-                      </div>
-                    </div>
-                  </div>
-                {% endif %}
+                  <span class="section-kicker">Summary</span>
+                  <p>{{ run.summary }}</p>
                   {% if run.job %}
                     <div class="run-route-inline">
                       <div>
                         <strong>{{ run.job.source_profile.name if run.job.source_profile else run.job.source_profile_id }}</strong>
                         <div class="muted"><code class="break-any">{{ run.job.source_profile.root_path_or_remote if run.job.source_profile else "—" }}</code></div>
-                        <div class="muted">Подпуть: {{ run.job.source_path or "." }}</div>
                       </div>
                       <div class="route-arrow">→</div>
                       <div>
                         <strong>{{ run.job.target_profile.name if run.job.target_profile else run.job.target_profile_id }}</strong>
                         <div class="muted"><code class="break-any">{{ run.job.target_profile.root_path_or_remote if run.job.target_profile else "—" }}</code></div>
-                        <div class="muted">Подпуть: {{ run.job.target_path or "." }}</div>
                       </div>
                     </div>
                   {% endif %}
@@ -196,15 +286,6 @@
                     <a class="button secondary" href="/jobs?edit_job_id={{ run.job.id }}">Исправить</a>
                     <a class="button secondary" href="/jobs?clone_job_id={{ run.job.id }}">Копировать как новую</a>
                   {% endif %}
-                  {% if run.job and run.status == "interrupted" %}
-                    {% if job_requires_manual_start_checklist(run.job) %}
-                      <a class="button" href="/jobs/{{ run.job.id }}/start">Checklist и запуск</a>
-                    {% else %}
-                      <form method="post" action="/runs/{{ run.id }}/retry">
-                        <button class="button" type="submit">Повторить с дельты</button>
-                      </form>
-                    {% endif %}
-                  {% endif %}
                 </div>
               </section>
             </div>
@@ -212,7 +293,7 @@
         {% endfor %}
       </div>
     {% else %}
-      <p class="empty-state">История запусков пока пуста.</p>
+      <p class="empty-state">Сейчас нет свежих failed/blocked запусков. Полная история доступна в архиве.</p>
     {% endif %}
   </section>
 {% endblock %}

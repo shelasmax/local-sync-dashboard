@@ -121,7 +121,7 @@
 
 ## Текущее состояние продукта
 
-Релизный срез на `2026-04-15`: `v1.1.1`
+Релизный срез на `2026-04-15`: `v1.2.1`
 
 ### Уже есть
 
@@ -151,6 +151,12 @@
 - история запусков и логирование
 - live progress bar, ETA, скорость и текущие transfer items для активных app-managed задач
 - recovery UX для `interrupted` запусков в `/runs`, `/runs/{id}`, на главной и в `/jobs`
+- orphan-run reaper, который периодически переводит зависшие `running`-запуски в `interrupted`
+- SIGKILL после grace period для зависших `rclone`-процессов на stale mount
+- широкая обработка неожиданных исключений во время run execution и безопасный I/O в stream-цикле
+- operational `/runs` плюс отдельный archive `/runs/archive` с pagination, фильтрами и cleanup-очисткой локальной run history
+- явные `Скрыть` / `Показать` toggle-контролы для верхних recovery/incident-блоков на `/`, `/jobs`, `/runs` с сохранением состояния в браузере
+- блок активных run на `/runs`, собранный из live runtime snapshots, а не только из БД
 - cloud-to-cloud предупреждения в `/setup` и при составлении маршрута на `/jobs`
 - pre-run checklist для длинных cloud job при составлении маршрута на `/jobs`
 - встроенный экран `/ops` с runbook по запуску, recovery, `launchd` и backup/restore
@@ -158,12 +164,14 @@
 - единый визуальный ритм shell и карточек на `/`, `/jobs`, `/runs`, `/profiles`, `/setup`, `/ops`
 - более компактный header и уменьшенные hero-блоки без отдельной вкладки статуса
 - favicon и базовая чистка адаптивной верстки таблиц
+- автоматическая retention run history по дням с удалением старых локальных логов
 
 ### Чего пока нет
 
 - двусторонняя синхронизация
 - встроенная настройка `rclone remote` из интерфейса
 - backup/restore без секретов
+- отдельный archive UX для полной истории запусков, pagination и ручная cleanup-очистка run history
 - macOS notifications и более полный launchd-flow
 - optional relay-worker / VPS режим
 
@@ -209,8 +217,8 @@ rclone lsf "S3 Beget:bucket-name" --max-depth 1
 
 ## Что логично делать дальше
 
-1. Добавить backup/restore конфигурации без секретов.
-2. Доработать операционный слой: notifications, `launchd`, перенос на другой `Mac`.
-3. Связать диагностику профилей с `Ops / Runbook` еще плотнее.
-4. Сделать guided setup для `rclone remote`.
-5. После этого вернуться к исследованию always-on relay / VPS как optional режима, а не части MVP.
+1. Вынести полную историю запусков в отдельный archive-экран и оставить на `/`, `/jobs`, `/runs` только operational slices.
+2. Добавить pagination и ручную cleanup-очистку локальной run history как дополнение к retention.
+3. После этого вернуться к backup/restore конфигурации без секретов.
+4. Доработать операционный слой: notifications, `launchd`, перенос на другой `Mac`.
+5. Связать диагностику профилей с `Ops / Runbook` еще плотнее и затем сделать guided setup для `rclone remote`.

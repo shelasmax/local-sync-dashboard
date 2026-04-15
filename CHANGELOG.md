@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.2.1 - 2026-04-15
+
+### Archive UX and compact operational surfaces
+
+- Split run UX into two layers: `/runs` is now the operational screen for active, interrupted, and incident-driven actions, while `/runs/archive` holds the full run history with pagination and filters.
+- Added manual run-history cleanup: single-run delete and bulk archive cleanup remove only local `RunHistory` rows and log files, without touching source or target data.
+- Fixed routing regression for `/runs/archive` by registering the archive route before `/runs/{run_id}` so the archive no longer falls through into the run-detail integer parser.
+- Made recovery and incident surfaces more compact: top recovery blocks on `/jobs`, `/runs`, and `/` now show only the latest interrupted run where appropriate and expose explicit `Скрыть` / `Показать` toggles with persisted browser state.
+- Restored active-run visibility on `/runs` by building the active section from live runtime snapshots instead of relying only on database rows with `running` status.
+
 ## v1.2.0 - 2026-04-15
 
 ### Resilience: orphan-run detection and process cleanup

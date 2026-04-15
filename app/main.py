@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime, timedelta
 import json
 from math import isfinite
 from pathlib import Path
@@ -12,12 +13,12 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.config import settings
 from app.database import Base, SessionLocal, engine, get_session
-from app.models import ProfileType, RunHistory, StorageProfile, SyncJob
+from app.models import ProfileType, RunHistory, RunStatus, StorageProfile, SyncJob
 from app.schemas import (
     ConnectionTestPayload,
     RunHistoryRead,
@@ -30,8 +31,11 @@ from app.services.common import decode_json
 from app.services.jobs import (
     JobConflictError,
     JobDeleteError,
+    RunDeleteError,
     RunRecoveryError,
+    cleanup_runs,
     create_job,
+    delete_run,
     delete_job,
     init_settings,
     job_runner,
@@ -67,6 +71,16 @@ PROFILE_TYPE_LABELS = {
     ProfileType.S3_REMOTE.value: "S3 remote",
     ProfileType.YANDEX_REMOTE.value: "Яндекс Диск remote",
 }
+
+RUN_FILTERS = {
+    "all",
+    RunStatus.INTERRUPTED.value,
+    RunStatus.FAILED.value,
+    RunStatus.SUCCESS.value,
+    RunStatus.CANCELED.value,
+    RunStatus.BLOCKED.value,
+}
+ARCHIVE_PAGE_SIZE = 20
 
 STATUS_LABELS = {
     "running": "выполняется",
@@ -741,38 +755,151 @@ def _list_jobs(session: Session) -> list[SyncJob]:
     ).all()
 
 
-def _list_runs(session: Session, limit: int = 50) -> list[RunHistory]:
-    return session.scalars(
+def _runs_query():
+    return (
         select(RunHistory)
         .options(
             selectinload(RunHistory.job).selectinload(SyncJob.source_profile),
             selectinload(RunHistory.job).selectinload(SyncJob.target_profile),
         )
         .order_by(desc(RunHistory.started_at))
-        .limit(limit)
-    ).all()
+    )
+
+
+def _list_runs(session: Session, limit: int = 50) -> list[RunHistory]:
+    return session.scalars(_runs_query().limit(limit)).all()
+
+
+def _list_runs_with_status(session: Session, statuses: list[str], *, limit: int) -> list[RunHistory]:
+    return session.scalars(_runs_query().where(RunHistory.status.in_(statuses)).limit(limit)).all()
+
+
+def _list_actionable_runs(session: Session, limit: int = 20) -> list[RunHistory]:
+    return _list_runs_with_status(
+        session,
+        [
+            RunStatus.RUNNING.value,
+            RunStatus.INTERRUPTED.value,
+            RunStatus.FAILED.value,
+            RunStatus.BLOCKED.value,
+        ],
+        limit=limit,
+    )
 
 
 def _list_interrupted_runs(session: Session, limit: int = 5) -> list[RunHistory]:
-    return session.scalars(
-        select(RunHistory)
-        .options(
-            selectinload(RunHistory.job).selectinload(SyncJob.source_profile),
-            selectinload(RunHistory.job).selectinload(SyncJob.target_profile),
-        )
-        .where(RunHistory.status == "interrupted")
-        .order_by(desc(RunHistory.started_at))
-        .limit(limit)
+    return _list_runs_with_status(session, [RunStatus.INTERRUPTED.value], limit=limit)
+
+
+def _list_incident_runs(session: Session, limit: int = 10) -> list[RunHistory]:
+    return _list_runs_with_status(
+        session,
+        [RunStatus.FAILED.value, RunStatus.BLOCKED.value],
+        limit=limit,
+    )
+
+
+def _build_active_run_cards(session: Session, active_runs: dict[int, dict[str, object]]) -> list[dict[str, Any]]:
+    if not active_runs:
+        return []
+
+    job_ids = list(active_runs.keys())
+    jobs = session.scalars(
+        select(SyncJob)
+        .options(selectinload(SyncJob.source_profile), selectinload(SyncJob.target_profile))
+        .where(SyncJob.id.in_(job_ids))
     ).all()
+    jobs_by_id = {job.id: job for job in jobs}
+
+    run_ids = [
+        int(snapshot["run_id"])
+        for snapshot in active_runs.values()
+        if snapshot.get("run_id") is not None
+    ]
+    runs_by_id: dict[int, RunHistory] = {}
+    if run_ids:
+        runs = session.scalars(
+            _runs_query().where(RunHistory.id.in_(run_ids))
+        ).all()
+        runs_by_id = {run.id: run for run in runs}
+
+    items: list[dict[str, Any]] = []
+    for job_id, snapshot in active_runs.items():
+        run = runs_by_id.get(int(snapshot["run_id"])) if snapshot.get("run_id") is not None else None
+        job = jobs_by_id.get(job_id) or (run.job if run else None)
+        items.append(
+            {
+                "job_id": job_id,
+                "job": job,
+                "run": run,
+                "snapshot": snapshot,
+            }
+        )
+
+    items.sort(key=lambda item: str(item["snapshot"].get("started_at", "")), reverse=True)
+    return items
+
+
+def _count_archived_runs(session: Session) -> int:
+    return session.scalar(
+        select(func.count(RunHistory.id)).where(RunHistory.status != RunStatus.RUNNING.value)
+    ) or 0
+
+
+def _list_archived_runs_paginated(
+    session: Session,
+    *,
+    page: int,
+    page_size: int,
+    status: str,
+) -> tuple[list[RunHistory], int]:
+    safe_page = max(page, 1)
+    safe_page_size = max(1, min(page_size, 100))
+    stmt = _runs_query().where(RunHistory.status != RunStatus.RUNNING.value)
+    if status != "all":
+        stmt = stmt.where(RunHistory.status == status)
+    total = session.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+    runs = session.scalars(stmt.offset((safe_page - 1) * safe_page_size).limit(safe_page_size)).all()
+    return runs, total
+
+
+def _archive_cleanup_eligibility(
+    session: Session,
+    *,
+    status: str,
+    older_than_days: int,
+) -> dict[str, Any]:
+    cutoff = None
+    candidates = 0
+    if older_than_days > 0:
+        cutoff = f"{older_than_days} дн."
+        cutoff_dt = datetime.now(UTC) - timedelta(days=older_than_days)
+        stmt = select(func.count(RunHistory.id)).where(
+            RunHistory.status != RunStatus.RUNNING.value,
+        )
+        if status != "all":
+            stmt = stmt.where(RunHistory.status == status)
+        stmt = stmt.where(RunHistory.started_at < cutoff_dt)
+        candidates = session.scalar(stmt) or 0
+    return {"status": status, "older_than_days": older_than_days, "cutoff_label": cutoff, "candidates": candidates}
+
+
+def _archive_query(page: int, status: str, cleanup_status: str | None = None, cleanup_days: int | None = None) -> str:
+    query = {"page": max(page, 1), "status": status}
+    if cleanup_status:
+        query["cleanup_status"] = cleanup_status
+    if cleanup_days is not None:
+        query["cleanup_days"] = cleanup_days
+    return urlencode(query)
 
 
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request, session: Session = Depends(get_session)):
     stats = job_runner.status()
-    recent_runs = _list_runs(session, limit=10)
-    interrupted_runs = _list_interrupted_runs(session, limit=3)
+    recent_runs = _list_runs(session, limit=5)
+    interrupted_runs = _list_interrupted_runs(session, limit=1)
     diagnostics = collect_setup_diagnostics()
-    incidents_by_job = latest_problem_runs_by_job(_list_runs(session, limit=50))
+    incidents_by_job = latest_problem_runs_by_job(_list_actionable_runs(session, limit=25))
     return templates.TemplateResponse(
         request=request,
         name="index.html",
@@ -781,6 +908,7 @@ def index(request: Request, session: Session = Depends(get_session)):
             "stats": stats,
             "recent_runs": recent_runs,
             "interrupted_runs": interrupted_runs,
+            "archived_runs_count": _count_archived_runs(session),
             "diagnostics": diagnostics,
             "status_label": status_label,
             "format_bytes": format_bytes,
@@ -1013,8 +1141,8 @@ def jobs_page(
 ):
     profiles = _list_profiles(session)
     jobs = _list_jobs(session)
-    recent_runs = _list_runs(session, limit=50)
-    interrupted_runs = _list_interrupted_runs(session, limit=5)
+    recent_runs = _list_actionable_runs(session, limit=25)
+    interrupted_runs = _list_interrupted_runs(session, limit=1)
     schedule_examples = ["manual", "hourly", "daily", "weekly", "cron:0 6 * * *"]
     prefill = prefill_job_payload(request.query_params)
     requested_mode = "edit" if edit_job_id else "clone" if clone_job_id else "create"
@@ -1090,6 +1218,7 @@ def jobs_page(
             "job_requires_manual_start_checklist": job_requires_manual_start_checklist,
             "job_templates": suggested_job_templates(profiles),
             "incidents_by_job": incidents_by_job,
+            "archived_runs_count": _count_archived_runs(session),
         },
     )
 
@@ -1376,19 +1505,20 @@ def delete_job_html(job_id: int, session: Session = Depends(get_session)):
 
 @app.get("/runs", response_class=HTMLResponse)
 def runs_page(request: Request, error: str = "", session: Session = Depends(get_session)):
-    runs = _list_runs(session)
     active_runs = job_runner.active_run_snapshots()
-    interrupted_runs = _list_interrupted_runs(session, limit=5)
-    incidents_by_job = latest_problem_runs_by_job(runs)
+    active_run_cards = _build_active_run_cards(session, active_runs)
+    interrupted_runs = _list_interrupted_runs(session, limit=1)
+    incident_runs = _list_incident_runs(session, limit=10)
     return templates.TemplateResponse(
         request=request,
         name="runs.html",
         context={
             "request": request,
-            "runs": runs,
+            "active_run_cards": active_run_cards,
             "active_runs": active_runs,
             "has_active_runs": bool(active_runs),
             "interrupted_runs": interrupted_runs,
+            "incident_runs": incident_runs,
             "status_label": status_label,
             "format_bytes": format_bytes,
             "format_speed": format_speed,
@@ -1397,7 +1527,124 @@ def runs_page(request: Request, error: str = "", session: Session = Depends(get_
             "interrupted_run_recovery_steps": interrupted_run_recovery_steps,
             "job_requires_manual_start_checklist": job_requires_manual_start_checklist,
             "error": error,
-            "incidents_by_job": incidents_by_job,
+            "archived_runs_count": _count_archived_runs(session),
+        },
+    )
+
+
+@app.post("/runs/{run_id}/delete")
+def delete_run_html(
+    run_id: int,
+    page: int = Form(default=1),
+    status: str = Form(default="all"),
+    session: Session = Depends(get_session),
+):
+    safe_status = status if status in RUN_FILTERS else "all"
+    try:
+        delete_run(session, run_id, job_runner)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RunDeleteError as exc:
+        query = urlencode({"page": max(page, 1), "status": safe_status, "error": str(exc)})
+        return RedirectResponse(url=f"/runs/archive?{query}", status_code=303)
+    query = urlencode({"page": max(page, 1), "status": safe_status, "info": "Запуск удален."})
+    return RedirectResponse(url=f"/runs/archive?{query}", status_code=303)
+
+
+@app.post("/runs/archive/cleanup")
+def cleanup_runs_html(
+    page: int = Form(default=1),
+    status: str = Form(default="all"),
+    cleanup_status: str = Form(default="success"),
+    cleanup_days: int = Form(default=30),
+    session: Session = Depends(get_session),
+):
+    safe_status = status if status in RUN_FILTERS else "all"
+    safe_cleanup_status = cleanup_status if cleanup_status in RUN_FILTERS else "success"
+    try:
+        result = cleanup_runs(
+            session,
+            job_runner,
+            status=safe_cleanup_status,
+            older_than_days=cleanup_days,
+        )
+    except RunDeleteError as exc:
+        query = urlencode(
+            {
+                "page": max(page, 1),
+                "status": safe_status,
+                "cleanup_status": safe_cleanup_status,
+                "cleanup_days": cleanup_days,
+                "error": str(exc),
+            }
+        )
+        return RedirectResponse(url=f"/runs/archive?{query}", status_code=303)
+
+    query = urlencode(
+        {
+            "page": 1,
+            "status": safe_status,
+            "cleanup_status": safe_cleanup_status,
+            "cleanup_days": cleanup_days,
+            "info": f"Очищено запусков: {result.deleted_runs}. Удалено логов: {result.deleted_logs}.",
+        }
+    )
+    return RedirectResponse(url=f"/runs/archive?{query}", status_code=303)
+
+
+@app.get("/runs/archive", response_class=HTMLResponse)
+def runs_archive_page(
+    request: Request,
+    page: int = 1,
+    status: str = "all",
+    info: str = "",
+    error: str = "",
+    cleanup_status: str = "success",
+    cleanup_days: int = 30,
+    session: Session = Depends(get_session),
+):
+    safe_status = status if status in RUN_FILTERS else "all"
+    safe_cleanup_status = cleanup_status if cleanup_status in RUN_FILTERS else "success"
+    runs, total = _list_archived_runs_paginated(
+        session,
+        page=page,
+        page_size=ARCHIVE_PAGE_SIZE,
+        status=safe_status,
+    )
+    total_pages = max(1, (total + ARCHIVE_PAGE_SIZE - 1) // ARCHIVE_PAGE_SIZE)
+    current_page = min(max(page, 1), total_pages)
+    if current_page != page:
+        runs, total = _list_archived_runs_paginated(
+            session,
+            page=current_page,
+            page_size=ARCHIVE_PAGE_SIZE,
+            status=safe_status,
+        )
+    cleanup_preview = _archive_cleanup_eligibility(
+        session,
+        status=safe_cleanup_status,
+        older_than_days=cleanup_days,
+    )
+    return templates.TemplateResponse(
+        request=request,
+        name="runs_archive.html",
+        context={
+            "request": request,
+            "runs": runs,
+            "page": current_page,
+            "page_size": ARCHIVE_PAGE_SIZE,
+            "status": safe_status,
+            "total_runs": total,
+            "total_pages": total_pages,
+            "status_label": status_label,
+            "format_bytes": format_bytes,
+            "run_filters": sorted(RUN_FILTERS, key=lambda value: (value != "all", value)),
+            "archive_query": _archive_query,
+            "info": info,
+            "error": error,
+            "cleanup_status": safe_cleanup_status,
+            "cleanup_days": cleanup_days,
+            "cleanup_preview": cleanup_preview,
         },
     )
 
@@ -1668,3 +1915,60 @@ def api_delete_job(job_id: int, session: Session = Depends(get_session)):
 @app.get("/api/runs", response_model=list[RunHistoryRead])
 def api_runs(session: Session = Depends(get_session)):
     return _list_runs(session)
+
+
+@app.get("/api/runs/archive")
+def api_archive_runs(
+    page: int = 1,
+    page_size: int = ARCHIVE_PAGE_SIZE,
+    status: str = "all",
+    session: Session = Depends(get_session),
+):
+    safe_status = status if status in RUN_FILTERS else "all"
+    runs, total = _list_archived_runs_paginated(
+        session,
+        page=page,
+        page_size=page_size,
+        status=safe_status,
+    )
+    return {
+        "items": [RunHistoryRead.model_validate(run).model_dump(mode="json") for run in runs],
+        "page": max(page, 1),
+        "page_size": max(1, min(page_size, 100)),
+        "status": safe_status,
+        "total": total,
+    }
+
+
+@app.delete("/api/runs/{run_id}")
+def api_delete_run(run_id: int, session: Session = Depends(get_session)):
+    try:
+        delete_run(session, run_id, job_runner)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RunDeleteError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"ok": True}
+
+
+@app.post("/api/runs/archive/cleanup")
+def api_cleanup_runs(
+    cleanup_status: str = "success",
+    cleanup_days: int = 30,
+    session: Session = Depends(get_session),
+):
+    safe_cleanup_status = cleanup_status if cleanup_status in RUN_FILTERS else "success"
+    try:
+        result = cleanup_runs(
+            session,
+            job_runner,
+            status=safe_cleanup_status,
+            older_than_days=cleanup_days,
+        )
+    except RunDeleteError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {
+        "ok": True,
+        "deleted_runs": result.deleted_runs,
+        "deleted_logs": result.deleted_logs,
+    }

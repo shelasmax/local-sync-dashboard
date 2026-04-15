@@ -110,6 +110,16 @@ class JobConflictError(ValueError):
     pass
 
 
+class RunDeleteError(RuntimeError):
+    pass
+
+
+@dataclass(slots=True)
+class RunCleanupResult:
+    deleted_runs: int
+    deleted_logs: int
+
+
 @dataclass(slots=True)
 class JobPreview:
     job_id: int
@@ -275,6 +285,62 @@ def delete_job(session, job_id: int, runner: "JobRunner") -> None:
     session.delete(job)
     session.commit()
     runner.sync_job(job_id)
+
+
+def _delete_run_artifacts(run: RunHistory) -> int:
+    if not run.log_path:
+        return 0
+    log_path = Path(run.log_path)
+    if not log_path.exists():
+        return 0
+    log_path.unlink(missing_ok=True)
+    return 1
+
+
+def delete_run(session, run_id: int, runner: "JobRunner") -> None:
+    run = session.get(RunHistory, run_id)
+    if not run:
+        raise LookupError("Запуск не найден.")
+    if run.status == RunStatus.RUNNING.value:
+        raise RunDeleteError("Нельзя удалить активный запуск. Сначала дождитесь завершения или остановите задачу.")
+    if run.job_id in runner.active_runs:
+        raise RunDeleteError("Нельзя удалить запуск активной задачи.")
+
+    _delete_run_artifacts(run)
+    session.delete(run)
+    session.commit()
+
+
+def cleanup_runs(
+    session,
+    runner: "JobRunner",
+    *,
+    status: str | None = None,
+    older_than_days: int | None = None,
+) -> RunCleanupResult:
+    if older_than_days is None or older_than_days < 1:
+        raise RunDeleteError("Для массовой очистки укажите возраст запусков в днях.")
+
+    stmt = select(RunHistory).where(RunHistory.status != RunStatus.RUNNING.value)
+    if status and status != "all":
+        stmt = stmt.where(RunHistory.status == status)
+
+    cutoff = datetime.now(UTC) - timedelta(days=older_than_days)
+    stmt = stmt.where(RunHistory.started_at < cutoff)
+    runs = session.scalars(stmt).all()
+
+    active_job_ids = set(runner.active_runs.keys())
+    deleted_logs = 0
+    deleted_runs = 0
+    for run in runs:
+        if run.job_id in active_job_ids:
+            continue
+        deleted_logs += _delete_run_artifacts(run)
+        session.delete(run)
+        deleted_runs += 1
+
+    session.commit()
+    return RunCleanupResult(deleted_runs=deleted_runs, deleted_logs=deleted_logs)
 
 
 def retry_run(session, run_id: int, runner: "JobRunner") -> tuple[int, str]:
@@ -636,10 +702,7 @@ class JobRunner:
             cutoff = datetime.now(UTC) - timedelta(days=app_settings.log_retention_days)
             expired_runs = session.scalars(select(RunHistory).where(RunHistory.started_at < cutoff)).all()
             for run in expired_runs:
-                if run.log_path:
-                    log_path = Path(run.log_path)
-                    if log_path.exists():
-                        log_path.unlink(missing_ok=True)
+                _delete_run_artifacts(run)
             session.execute(delete(RunHistory).where(RunHistory.started_at < cutoff))
             session.commit()
 

@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="page-hero compact-hero">
+    <div>
+      <p class="eyebrow">Archive</p>
+      <h2>Архив запусков</h2>
+      <p class="page-lead">Полная история запусков с фильтрами, пагинацией и ручной очисткой локального состояния приложения.</p>
+    </div>
+    <div class="hero-actions">
+      <a class="button secondary" href="/runs">Назад к recovery</a>
+      <a class="button secondary" href="/jobs">К задачам</a>
+    </div>
+  </section>
+
+  {% if info %}
+    <section class="panel">
+      <div class="incident-panel incident-info compact-incident">
+        <div class="incident-main">
+          <span class="status-dot status-info"></span>
+          <div>
+            <strong>Архив обновлен</strong>
+            <p>{{ info }}</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  {% endif %}
+
+  {% if error %}
+    <section class="panel">
+      <div class="incident-panel incident-danger compact-incident">
+        <div class="incident-main">
+          <span class="status-dot status-failed"></span>
+          <div>
+            <strong>Очистка не выполнена</strong>
+            <p>{{ error }}</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  {% endif %}
+
+  <section class="dashboard-grid">
+    <article class="panel">
+      <div class="panel-header">
+        <div>
+          <span class="section-kicker">Filters</span>
+          <h3>Фильтр архива</h3>
+        </div>
+      </div>
+      <form method="get" action="/runs/archive" class="stack">
+        <label>
+          <span>Статус</span>
+          <select name="status">
+            {% for item in run_filters %}
+              <option value="{{ item }}" {% if status == item %}selected{% endif %}>{{ "все завершенные" if item == "all" else status_label(item) }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <button class="button secondary" type="submit">Применить фильтр</button>
+      </form>
+      <p class="panel-note">Постраничная выборка: {{ page_size }} записей на страницу. Поле `running` сюда не попадает.</p>
+    </article>
+
+    <article class="panel">
+      <div class="panel-header">
+        <div>
+          <span class="section-kicker">Cleanup</span>
+          <h3>Ручная очистка</h3>
+        </div>
+      </div>
+      <form method="post" action="/runs/archive/cleanup" class="stack" onsubmit="return confirm('Очистить только локальные записи и логи из архива? Данные в source/target удалены не будут.');">
+        <input type="hidden" name="page" value="{{ page }}" />
+        <input type="hidden" name="status" value="{{ status }}" />
+        <label>
+          <span>Какие статусы чистить</span>
+          <select name="cleanup_status">
+            {% for item in run_filters %}
+              <option value="{{ item }}" {% if cleanup_status == item %}selected{% endif %}>{{ "все завершенные" if item == "all" else status_label(item) }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          <span>Старше чем</span>
+          <select name="cleanup_days">
+            {% for item in [7, 14, 30, 60, 90] %}
+              <option value="{{ item }}" {% if cleanup_days == item %}selected{% endif %}>{{ item }} дней</option>
+            {% endfor %}
+          </select>
+        </label>
+        <div class="checklist-panel compact-checklist">
+          <strong>Что будет удалено</strong>
+          <ul class="plain-list compact-list">
+            <li>Только локальная запись `RunHistory` и связанный лог-файл.</li>
+            <li>Текущие активные run и данные в хранилищах не затрагиваются.</li>
+            <li>Автоматическая retention по дням остается отдельным фоновым слоем.</li>
+          </ul>
+        </div>
+        <p class="panel-note">Сейчас под условия подходят: {{ cleanup_preview.candidates }} запусков.</p>
+        <button class="button secondary" type="submit">Очистить архив</button>
+      </form>
+    </article>
+  </section>
+
+  <section class="panel">
+    <div class="panel-header">
+      <div>
+        <span class="section-kicker">Archive</span>
+        <h3>Полная история</h3>
+      </div>
+      <span class="panel-note">Всего записей: {{ total_runs }}. Страница {{ page }} из {{ total_pages }}.</span>
+    </div>
+    {% if runs %}
+      <div class="control-list runs-list">
+        {% for run in runs %}
+          <article class="control-card run-card" data-job-id="{{ run.job_id }}">
+            <div class="run-card-layout">
+              <section class="run-card-main">
+                <div class="run-card-block">
+                  <span class="section-kicker">Status</span>
+                  <div class="status-line">
+                    <strong>{{ run.job.name if run.job else run.job_id }}</strong>
+                    <span class="badge badge-{{ run.status }}">{{ status_label(run.status) }}</span>
+                  </div>
+                  <div class="panel-note">Старт: {{ run.started_at }}</div>
+                  <div class="panel-note">Файлы: {{ run.files_transferred }} · {{ format_bytes(run.bytes_transferred) }}</div>
+                </div>
+
+                <div class="run-card-block">
+                  <span class="section-kicker">Summary</span>
+                  <p>{{ run.summary }}</p>
+                  {% if run.job %}
+                    <div class="run-route-inline">
+                      <div>
+                        <strong>{{ run.job.source_profile.name if run.job.source_profile else run.job.source_profile_id }}</strong>
+                        <div class="muted"><code class="break-any">{{ run.job.source_profile.root_path_or_remote if run.job.source_profile else "—" }}</code></div>
+                        <div class="muted">Подпуть: {{ run.job.source_path or "." }}</div>
+                      </div>
+                      <div class="route-arrow">→</div>
+                      <div>
+                        <strong>{{ run.job.target_profile.name if run.job.target_profile else run.job.target_profile_id }}</strong>
+                        <div class="muted"><code class="break-any">{{ run.job.target_profile.root_path_or_remote if run.job.target_profile else "—" }}</code></div>
+                        <div class="muted">Подпуть: {{ run.job.target_path or "." }}</div>
+                      </div>
+                    </div>
+                  {% endif %}
+                </div>
+              </section>
+
+              <section class="run-card-actions">
+                <span class="section-kicker">Next Action</span>
+                <div class="action-stack">
+                  <a class="button" href="/runs/{{ run.id }}">Открыть запуск</a>
+                  {% if run.job %}
+                    <a class="button secondary" href="/jobs?edit_job_id={{ run.job.id }}">Исправить задачу</a>
+                  {% endif %}
+                  <form method="post" action="/runs/{{ run.id }}/delete" onsubmit="return confirm('Удалить этот запуск и его локальный лог из архива? Данные в хранилищах не изменятся.');">
+                    <input type="hidden" name="page" value="{{ page }}" />
+                    <input type="hidden" name="status" value="{{ status }}" />
+                    <button class="button secondary" type="submit">Удалить из архива</button>
+                  </form>
+                </div>
+              </section>
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+      <div class="action-row">
+        {% if page > 1 %}
+          <a class="button secondary" href="/runs/archive?{{ archive_query(page - 1, status, cleanup_status, cleanup_days) }}">Назад</a>
+        {% endif %}
+        {% if page < total_pages %}
+          <a class="button secondary" href="/runs/archive?{{ archive_query(page + 1, status, cleanup_status, cleanup_days) }}">Следующая страница</a>
+        {% endif %}
+      </div>
+    {% else %}
+      <p class="empty-state">Под выбранный фильтр архив пока пуст.</p>
+    {% endif %}
+  </section>
+{% endblock %}

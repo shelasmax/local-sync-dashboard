@@ -10,13 +10,16 @@ from urllib.parse import parse_qsl
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from starlette.requests import Request
+from fastapi.routing import APIRoute
 
 from app.database import Base
 from app.main import (
+    app,
     api_browse_profile,
     api_create_job,
     build_job_form_query,
     create_job_html,
+    index,
     interrupted_run_recovery_steps,
     job_pre_run_checklist,
     job_requires_manual_start_checklist,
@@ -28,6 +31,7 @@ from app.main import (
     profile_diagnostic_hints,
     profiles_page,
     run_detail_page,
+    runs_archive_page,
     runs_page,
     setup_page,
     update_job_html,
@@ -383,8 +387,109 @@ class MainPagesRecoveryUxTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("Прерванные запуски", body)
-        self.assertIn("`re-attach` не поддерживается", body)
+        self.assertIn("последний interrupted run", body)
         self.assertIn("Checklist и запуск", body)
+        self.assertIn("Архив запусков", body)
+        self.assertIn('id="toggle-recovery-runs"', body)
+        self.assertNotIn("Лента запусков", body)
+
+    def test_index_page_shows_toggle_buttons_and_single_recovery_run(self):
+        second_run = RunHistory(
+            job_id=self.job.id,
+            status="interrupted",
+            summary="Прервано после sleep.",
+            started_at=datetime.now(UTC),
+            bytes_transferred=2048,
+            files_transferred=5,
+        )
+        self.session.add(second_run)
+        self.session.commit()
+
+        request = self._request("/")
+        response = index(request, session=self.session)
+        body = response.body.decode()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('id="toggle-index-incidents"', body)
+        self.assertIn('id="toggle-index-recovery"', body)
+        self.assertEqual(body.count("Все recovery-сценарии"), 1)
+
+    def test_runs_archive_page_shows_pagination_and_filters(self):
+        extra_runs = [
+            RunHistory(
+                job_id=self.job.id,
+                status="success",
+                summary=f"Archived #{index}",
+                started_at=datetime.now(UTC),
+                finished_at=datetime.now(UTC),
+            )
+            for index in range(25)
+        ]
+        self.session.add_all(extra_runs)
+        self.session.commit()
+
+        request = self._request("/runs/archive")
+        response = runs_archive_page(request, page=2, status="success", session=self.session)
+        body = response.body.decode()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Архив запусков", body)
+        self.assertIn("Страница 2 из 2", body)
+        self.assertNotIn("Следующая страница", body)
+        self.assertIn("Удалить из архива", body)
+
+    def test_runs_operational_sections_show_only_latest_interrupted(self):
+        second_run = RunHistory(
+            job_id=self.job.id,
+            status="interrupted",
+            summary="Прервано после sleep.",
+            started_at=datetime.now(UTC),
+            bytes_transferred=2048,
+            files_transferred=5,
+        )
+        self.session.add(second_run)
+        self.session.commit()
+
+        request = self._request("/runs")
+        response = runs_page(request, session=self.session)
+        body = response.body.decode()
+
+        self.assertEqual(body.count("Повторить с дельты"), 1)
+
+    def test_runs_page_shows_active_snapshot_even_without_running_db_row(self):
+        request = self._request("/runs")
+        snapshot = {
+            self.job.id: {
+                "job_id": self.job.id,
+                "run_id": self.run.id,
+                "job_name": self.job.name,
+                "status": "running",
+                "summary": "Идет перенос.",
+                "command_preview": "rclone copy ...",
+                "started_at": datetime.now(UTC).isoformat(),
+                "updated_at": datetime.now(UTC).isoformat(),
+                "bytes_transferred": 2048,
+                "total_bytes": 4096,
+                "remaining_bytes": 2048,
+                "files_transferred": 2,
+                "total_files": 4,
+                "speed": 512,
+                "eta_seconds": 60,
+                "listed": 0,
+                "checks": 0,
+                "total_checks": 0,
+                "progress_percent": 50.0,
+                "active_items": [],
+            }
+        }
+        with patch("app.main.job_runner.active_run_snapshots", return_value=snapshot):
+            response = runs_page(request, session=self.session)
+        body = response.body.decode()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Активные запуски", body)
+        self.assertIn("Идет перенос.", body)
+        self.assertIn('id="toggle-active-runs"', body)
 
     def test_run_detail_page_shows_recovery_steps(self):
         request = self._request(f"/runs/{self.run.id}")
@@ -406,6 +511,12 @@ class MainPagesRecoveryUxTest(unittest.TestCase):
         self.assertIn("Перед нажатием «Запустить»", body)
         self.assertIn("Запустить copy сейчас", body)
         self.assertIn("Сначала сделать Dry-run", body)
+
+
+class MainRoutingRegressionTest(unittest.TestCase):
+    def test_runs_archive_route_registered_before_run_detail(self):
+        paths = [route.path for route in app.routes if isinstance(route, APIRoute)]
+        self.assertLess(paths.index("/runs/archive"), paths.index("/runs/{run_id}"))
 
 
 class MainCreateJobErrorHandlingTest(unittest.TestCase):
