@@ -10,6 +10,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.database import Base
+from app.database import migrate_sync_jobs_table
 from app.models import ProfileType, StorageProfile, SyncJob
 from app.schemas import SyncJobPayload
 from app.services.common import encode_json
@@ -32,6 +33,7 @@ from app.services.jobs import (
     validate_job_endpoints,
 )
 from app.services.rclone import RcloneResult
+from app.services.rclone import build_copy_command
 
 
 class DummyRunner:
@@ -220,6 +222,83 @@ class JobsServiceTest(unittest.TestCase):
         with self.assertRaises(JobConflictError):
             from app.services.jobs import create_job
             create_job(self.session, duplicate)
+
+    def test_build_copy_command_supports_advanced_runtime_flags(self):
+        command = build_copy_command(
+            source="/tmp/source",
+            target="yadisk:target",
+            transfers=8,
+            checkers=16,
+            fast_list=True,
+        )
+
+        self.assertIn("--transfers", command)
+        self.assertIn("8", command)
+        self.assertIn("--checkers", command)
+        self.assertIn("16", command)
+        self.assertIn("--fast-list", command)
+
+    def test_create_job_persists_advanced_rclone_flags(self):
+        from app.services.jobs import create_job
+
+        payload = SyncJobPayload(
+            name="Advanced copy",
+            source_profile_id=self.source.id,
+            target_profile_id=self.target.id,
+            source_path="",
+            target_path="",
+            schedule="manual",
+            enabled=True,
+            mode="copy",
+            filters=[],
+            verify_checksum=False,
+            rclone_transfers=8,
+            rclone_checkers=16,
+            rclone_fast_list=True,
+        )
+
+        job = create_job(self.session, payload)
+
+        self.assertEqual(job.rclone_transfers, 8)
+        self.assertEqual(job.rclone_checkers, 16)
+        self.assertTrue(job.rclone_fast_list)
+
+    def test_migrate_sync_jobs_table_adds_new_columns_for_existing_db(self):
+        self.session.close()
+        Base.metadata.drop_all(self.engine)
+        with self.engine.begin() as connection:
+            connection.exec_driver_sql(
+                """
+                CREATE TABLE sync_jobs (
+                    id INTEGER PRIMARY KEY,
+                    name VARCHAR(120),
+                    source_profile_id INTEGER,
+                    source_path VARCHAR(512),
+                    target_profile_id INTEGER,
+                    target_path VARCHAR(512),
+                    schedule VARCHAR(120),
+                    enabled BOOLEAN,
+                    mode VARCHAR(16),
+                    filters_json TEXT,
+                    bandwidth_limit VARCHAR(32),
+                    verify_checksum BOOLEAN,
+                    created_at DATETIME,
+                    updated_at DATETIME
+                )
+                """
+            )
+
+        migrate_sync_jobs_table(self.engine)
+
+        with self.engine.begin() as connection:
+            columns = {
+                row[1]
+                for row in connection.exec_driver_sql("PRAGMA table_info(sync_jobs)").fetchall()
+            }
+
+        self.assertIn("rclone_transfers", columns)
+        self.assertIn("rclone_checkers", columns)
+        self.assertIn("rclone_fast_list", columns)
 
     def test_preview_job_builds_dry_run_summary(self):
         job = self._create_job()

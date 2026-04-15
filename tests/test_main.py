@@ -683,7 +683,10 @@ class MainCreateJobErrorHandlingTest(unittest.TestCase):
             schedule="weekly",
             enabled=True,
             bandwidth_limit="8M",
+            rclone_transfers="8",
+            rclone_checkers="16",
             verify_checksum=True,
+            rclone_fast_list=True,
             filters="+ *.jpg",
             session=self.session,
         )
@@ -693,7 +696,10 @@ class MainCreateJobErrorHandlingTest(unittest.TestCase):
         self.assertIn("source_path=photos%2Fraw", response.headers["location"])
         self.assertIn("target_path=backup%2F2026", response.headers["location"])
         self.assertIn("bandwidth_limit=8M", response.headers["location"])
+        self.assertIn("rclone_transfers=8", response.headers["location"])
+        self.assertIn("rclone_checkers=16", response.headers["location"])
         self.assertIn("verify_checksum=true", response.headers["location"])
+        self.assertIn("rclone_fast_list=true", response.headers["location"])
         self.assertIn("enabled=true", response.headers["location"])
         self.assertIn("error_field=name", response.headers["location"])
 
@@ -719,7 +725,10 @@ class MainCreateJobErrorHandlingTest(unittest.TestCase):
             schedule="manual",
             enabled=True,
             bandwidth_limit="",
+            rclone_transfers="",
+            rclone_checkers="",
             verify_checksum=False,
+            rclone_fast_list=False,
             filters="",
             session=self.session,
         )
@@ -739,7 +748,10 @@ class MainCreateJobErrorHandlingTest(unittest.TestCase):
             target_path="backup",
             schedule="weekly",
             bandwidth_limit="8M",
+            rclone_transfers="8",
+            rclone_checkers="16",
             verify_checksum=True,
+            rclone_fast_list=True,
             filters="+ *.jpg",
             enabled=True,
         )
@@ -750,7 +762,10 @@ class MainCreateJobErrorHandlingTest(unittest.TestCase):
         self.assertEqual(payload["target_path"], "backup")
         self.assertEqual(payload["schedule"], "weekly")
         self.assertEqual(payload["bandwidth_limit"], "8M")
+        self.assertEqual(payload["rclone_transfers"], "8")
+        self.assertEqual(payload["rclone_checkers"], "16")
         self.assertTrue(payload["verify_checksum"])
+        self.assertTrue(payload["rclone_fast_list"])
         self.assertTrue(payload["enabled"])
         self.assertEqual(payload["error_field"], "")
 
@@ -764,7 +779,10 @@ class MainCreateJobErrorHandlingTest(unittest.TestCase):
             target_path="backup",
             schedule="weekly",
             bandwidth_limit="8M",
+            rclone_transfers="8",
+            rclone_checkers="16",
             verify_checksum=True,
+            rclone_fast_list=True,
             filters="+ *.jpg",
             enabled=True,
         )
@@ -873,7 +891,10 @@ class MainCreateJobErrorHandlingTest(unittest.TestCase):
             schedule="weekly",
             enabled=False,
             bandwidth_limit="8M",
+            rclone_transfers="8",
+            rclone_checkers="16",
             verify_checksum=True,
+            rclone_fast_list=True,
             filters="+ *.jpg",
             session=self.session,
         )
@@ -885,6 +906,9 @@ class MainCreateJobErrorHandlingTest(unittest.TestCase):
         self.assertEqual(updated.source_path, "incoming/final")
         self.assertEqual(updated.schedule, "weekly")
         self.assertFalse(updated.enabled)
+        self.assertEqual(updated.rclone_transfers, 8)
+        self.assertEqual(updated.rclone_checkers, 16)
+        self.assertTrue(updated.rclone_fast_list)
 
     def test_api_browse_profile_lists_local_subdirectories(self):
         os.makedirs(os.path.join(self.source_root, "photos"), exist_ok=True)

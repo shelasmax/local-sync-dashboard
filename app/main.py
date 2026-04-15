@@ -17,7 +17,7 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.config import settings
-from app.database import Base, SessionLocal, engine, get_session
+from app.database import Base, SessionLocal, engine, get_session, migrate_sync_jobs_table
 from app.models import ProfileType, RunHistory, RunStatus, StorageProfile, SyncJob
 from app.schemas import (
     ConnectionTestPayload,
@@ -99,6 +99,7 @@ STATUS_LABELS = {
 async def lifespan(_: FastAPI):
     settings.ensure_runtime_dirs()
     Base.metadata.create_all(bind=engine)
+    migrate_sync_jobs_table()
     with SessionLocal() as session:
         init_settings(session)
     job_runner.start()
@@ -298,9 +299,12 @@ def prefill_job_payload(params: dict[str, Any] | None = None) -> dict[str, Any]:
         "target_path": data.get("target_path", ""),
         "schedule": data.get("schedule", "manual"),
         "bandwidth_limit": data.get("bandwidth_limit", ""),
+        "rclone_transfers": data.get("rclone_transfers", ""),
+        "rclone_checkers": data.get("rclone_checkers", ""),
         "filters": data.get("filters", ""),
         "enabled": str(data.get("enabled", "true")).lower() not in {"false", "0", ""},
         "verify_checksum": str(data.get("verify_checksum", "false")).lower() in {"true", "1", "on"},
+        "rclone_fast_list": str(data.get("rclone_fast_list", "false")).lower() in {"true", "1", "on"},
         "error_field": data.get("error_field", ""),
     }
 
@@ -317,6 +321,9 @@ def build_job_form_query(
     schedule: str,
     bandwidth_limit: str,
     verify_checksum: bool,
+    rclone_transfers: str = "",
+    rclone_checkers: str = "",
+    rclone_fast_list: bool = False,
     filters: str,
     enabled: bool,
     form_mode: str = "create",
@@ -335,6 +342,9 @@ def build_job_form_query(
         "schedule": schedule,
         "bandwidth_limit": bandwidth_limit,
         "verify_checksum": "true" if verify_checksum else "false",
+        "rclone_transfers": rclone_transfers,
+        "rclone_checkers": rclone_checkers,
+        "rclone_fast_list": "true" if rclone_fast_list else "false",
         "filters": filters,
         "enabled": "true" if enabled else "false",
     }
@@ -360,9 +370,12 @@ def build_job_prefill(job: SyncJob, *, mode: str) -> dict[str, Any]:
         "target_path": job.target_path,
         "schedule": job.schedule,
         "bandwidth_limit": job.bandwidth_limit or "",
+        "rclone_transfers": str(job.rclone_transfers) if job.rclone_transfers is not None else "",
+        "rclone_checkers": str(job.rclone_checkers) if job.rclone_checkers is not None else "",
         "filters": "\n".join(decode_json(job.filters_json, [])),
         "enabled": job.enabled,
         "verify_checksum": job.verify_checksum,
+        "rclone_fast_list": job.rclone_fast_list,
         "error_field": "",
     }
 
@@ -1312,7 +1325,10 @@ def create_job_html(
     schedule: str = Form(default="manual"),
     enabled: bool = Form(default=False),
     bandwidth_limit: str = Form(default=""),
+    rclone_transfers: str = Form(default=""),
+    rclone_checkers: str = Form(default=""),
     verify_checksum: bool = Form(default=False),
+    rclone_fast_list: bool = Form(default=False),
     filters: str = Form(default=""),
     session: Session = Depends(get_session),
 ):
@@ -1326,7 +1342,10 @@ def create_job_html(
             schedule=schedule,
             enabled=enabled,
             bandwidth_limit=bandwidth_limit or None,
+            rclone_transfers=rclone_transfers or None,
+            rclone_checkers=rclone_checkers or None,
             verify_checksum=verify_checksum,
+            rclone_fast_list=rclone_fast_list,
             filters=filters,
         )
         source_profile, target_profile = resolve_job_profiles(
@@ -1356,6 +1375,9 @@ def create_job_html(
             schedule=schedule,
             bandwidth_limit=bandwidth_limit,
             verify_checksum=verify_checksum,
+            rclone_transfers=rclone_transfers,
+            rclone_checkers=rclone_checkers,
+            rclone_fast_list=rclone_fast_list,
             filters=filters,
             enabled=enabled,
         )
@@ -1372,6 +1394,9 @@ def create_job_html(
             schedule=schedule,
             bandwidth_limit=bandwidth_limit,
             verify_checksum=verify_checksum,
+            rclone_transfers=rclone_transfers,
+            rclone_checkers=rclone_checkers,
+            rclone_fast_list=rclone_fast_list,
             filters=filters,
             enabled=enabled,
         )
@@ -1388,6 +1413,9 @@ def create_job_html(
             schedule=schedule,
             bandwidth_limit=bandwidth_limit,
             verify_checksum=verify_checksum,
+            rclone_transfers=rclone_transfers,
+            rclone_checkers=rclone_checkers,
+            rclone_fast_list=rclone_fast_list,
             filters=filters,
             enabled=enabled,
         )
@@ -1407,7 +1435,10 @@ def update_job_html(
     schedule: str = Form(default="manual"),
     enabled: bool = Form(default=False),
     bandwidth_limit: str = Form(default=""),
+    rclone_transfers: str = Form(default=""),
+    rclone_checkers: str = Form(default=""),
     verify_checksum: bool = Form(default=False),
+    rclone_fast_list: bool = Form(default=False),
     filters: str = Form(default=""),
     session: Session = Depends(get_session),
 ):
@@ -1421,7 +1452,10 @@ def update_job_html(
             schedule=schedule,
             enabled=enabled,
             bandwidth_limit=bandwidth_limit or None,
+            rclone_transfers=rclone_transfers or None,
+            rclone_checkers=rclone_checkers or None,
             verify_checksum=verify_checksum,
+            rclone_fast_list=rclone_fast_list,
             filters=filters,
         )
         source_profile, target_profile = resolve_job_profiles(
@@ -1451,6 +1485,9 @@ def update_job_html(
             schedule=schedule,
             bandwidth_limit=bandwidth_limit,
             verify_checksum=verify_checksum,
+            rclone_transfers=rclone_transfers,
+            rclone_checkers=rclone_checkers,
+            rclone_fast_list=rclone_fast_list,
             filters=filters,
             enabled=enabled,
             form_mode="edit",
@@ -1469,6 +1506,9 @@ def update_job_html(
             schedule=schedule,
             bandwidth_limit=bandwidth_limit,
             verify_checksum=verify_checksum,
+            rclone_transfers=rclone_transfers,
+            rclone_checkers=rclone_checkers,
+            rclone_fast_list=rclone_fast_list,
             filters=filters,
             enabled=enabled,
             form_mode="edit",
@@ -1487,6 +1527,9 @@ def update_job_html(
             schedule=schedule,
             bandwidth_limit=bandwidth_limit,
             verify_checksum=verify_checksum,
+            rclone_transfers=rclone_transfers,
+            rclone_checkers=rclone_checkers,
+            rclone_fast_list=rclone_fast_list,
             filters=filters,
             enabled=enabled,
             form_mode="edit",

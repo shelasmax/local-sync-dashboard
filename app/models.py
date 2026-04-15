@@ -67,6 +67,9 @@ class SyncJob(Base):
     filters_json: Mapped[str] = mapped_column(Text, default="[]")
     bandwidth_limit: Mapped[str | None] = mapped_column(String(32), nullable=True)
     verify_checksum: Mapped[bool] = mapped_column(Boolean, default=False)
+    rclone_transfers: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    rclone_checkers: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    rclone_fast_list: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

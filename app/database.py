@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from sqlalchemy import create_engine
+from sqlalchemy import text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from app.config import settings
@@ -28,3 +29,20 @@ def get_session():
     finally:
         session.close()
 
+
+def migrate_sync_jobs_table(bind=None) -> None:
+    additive_columns = [
+        ("rclone_transfers", "INTEGER"),
+        ("rclone_checkers", "INTEGER"),
+        ("rclone_fast_list", "BOOLEAN NOT NULL DEFAULT 0"),
+    ]
+    target_engine = bind or engine
+    with target_engine.begin() as connection:
+        columns = {
+            row[1]
+            for row in connection.execute(text("PRAGMA table_info(sync_jobs)")).fetchall()
+        }
+        for column_name, column_sql in additive_columns:
+            if column_name in columns:
+                continue
+            connection.execute(text(f"ALTER TABLE sync_jobs ADD COLUMN {column_name} {column_sql}"))

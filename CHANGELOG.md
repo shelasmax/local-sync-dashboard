@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.1.0 - 2026-04-16
+
+### Job-level rclone runtime tuning for long-running routes
+
+- Added explicit advanced `rclone` runtime controls on jobs: `transfers`, `checkers`, and `fast-list` now flow through the job form, command preview, persistence layer, and real `rclone copy` execution.
+- Added an additive SQLite migration for existing `sync_jobs` rows so these new runtime fields can be rolled out safely on an already-running local installation without wiping the database.
+- Hardened runtime startup so the `sync_jobs` schema upgrade is also guarded from the job runner path, reducing the chance of service-mode drift between code rollout and first execution.
+- Documented the first operational tuning pattern for the real `Synology SMB -> Yandex Disk` case: `transfers=8`, `checkers=16`, `fast-list` enabled improved throughput for many small files after a controlled service rollout.
+- Updated project documentation, backlog, and agent guidance so the current state is explicit: job-level tuning already exists, and the next UX step is `profile defaults + job override`.
+
 ## v2.0.0 - 2026-04-15
 
 ### Service-mode hardening for macOS launchd

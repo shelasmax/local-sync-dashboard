@@ -522,6 +522,24 @@
           </label>
         </div>
 
+        <div class="grid two compact-grid">
+          <label class="{% if prefill.error_field == 'rclone_transfers' %}field-invalid{% endif %}">
+            <span>Параллельные transfers</span>
+            <input name="rclone_transfers" placeholder="по умолчанию rclone, например 8" value="{{ prefill.rclone_transfers }}" />
+            {% if prefill.error_field == 'rclone_transfers' %}
+              <small class="field-error">{{ error }}</small>
+            {% endif %}
+          </label>
+
+          <label class="{% if prefill.error_field == 'rclone_checkers' %}field-invalid{% endif %}">
+            <span>Параллельные checkers</span>
+            <input name="rclone_checkers" placeholder="по умолчанию rclone, например 16" value="{{ prefill.rclone_checkers }}" />
+            {% if prefill.error_field == 'rclone_checkers' %}
+              <small class="field-error">{{ error }}</small>
+            {% endif %}
+          </label>
+        </div>
+
         <label class="{% if prefill.error_field == 'filters' %}field-invalid{% endif %}">
           <span>Фильтры</span>
           <textarea name="filters" rows="5" placeholder="- *.tmp&#10;+ *.jpg&#10;- *">{{ prefill.filters }}</textarea>
@@ -540,7 +558,14 @@
             <input type="checkbox" name="verify_checksum" {% if prefill.verify_checksum %}checked{% endif %} />
             <span>Проверять контрольные суммы</span>
           </label>
+
+          <label class="checkbox">
+            <input type="checkbox" name="rclone_fast_list" {% if prefill.rclone_fast_list %}checked{% endif %} />
+            <span>Использовать fast-list для remote listing</span>
+          </label>
         </div>
+
+        <p class="panel-note">Для маршрутов с большим числом маленьких файлов обычно безопасно начать с `transfers=8`, `checkers=16`, не включая checksum.</p>
 
         <div class="action-row">
           <button class="button" type="submit" title="{{ form_context.submit_title }}">{{ form_context.submit_label }}</button>

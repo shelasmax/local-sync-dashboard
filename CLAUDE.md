@@ -90,9 +90,16 @@ app/config.py         ← настройки (LOCAL_SYNC_DATA_DIR, var/, Keychai
 ### Жизненный цикл задания
 1. `JobRunner.sync_job()` регистрирует APScheduler-триггер.
 2. По расписанию или вручную: `enqueue_job()` → фоновый поток.
-3. `rclone.build_copy_command()` → `execute_with_progress()` стримит вывод.
-4. `progress_callback` парсит JSON-stats, обновляет `RunSnapshot`.
-5. Завершение → запись `RunHistory` в БД.
+3. Перед запуском runtime-path при необходимости добирает additive-миграции `sync_jobs`, чтобы новые поля не ломали service rollout на существующей локальной БД.
+4. `rclone.build_copy_command()` → `execute_with_progress()` стримит вывод.
+5. `progress_callback` парсит JSON-stats, обновляет `RunSnapshot`.
+6. Завершение → запись `RunHistory` в БД.
+
+### Runtime tuning `rclone`
+- На уровне job уже поддерживаются `rclone_transfers`, `rclone_checkers`, `rclone_fast_list`.
+- Это предназначено в первую очередь для long-running маршрутов с большим числом маленьких файлов, например `Synology SMB -> Yandex Disk`.
+- Без явной причины не поднимать parallelism агрессивно: сначала разумный уровень вроде `transfers=8`, `checkers=16`, затем только смотреть на эффект.
+- Следующий продуктовый шаг в этой зоне — не новые ad-hoc флаги в коде, а `profile defaults + job override`.
 
 ### UI-конвенции (не ломать без причины)
 - `/profiles` и `/jobs` — list-first UX: список всегда виден, форма создания открывается сверху через раскрывающийся блок.
@@ -104,6 +111,7 @@ app/config.py         ← настройки (LOCAL_SYNC_DATA_DIR, var/, Keychai
 - `app/services/profiles.py` — секреты, Keychain, lifecycle профиля
 - `app/services/jobs.py` — scheduler, потоки, retry, cancel
 - `app/services/rclone.py` — фактическое поведение копирования
+- `app/database.py` — additive миграции SQLite и совместимость service rollout со старой схемой
 - `launchd/com.localsync.dashboard.plist` — автозапуск и эксплуатация
 - `scripts/update_launchd_service.sh` — выкладка repo-кода в service-копию и restart LaunchAgent
 - `scripts/launchd_status.sh` — проверка loaded/running state агента, порта и service-логов

@@ -121,7 +121,7 @@
 
 ## Текущее состояние продукта
 
-Релизный срез на `2026-04-15`: `v2.0.0`
+Релизный срез на `2026-04-16`: `v2.1.0`
 
 ### Уже есть
 
@@ -141,6 +141,7 @@
 - CRUD задач
 - удаление задач из UI и API с защитой от удаления активной задачи
 - ручной запуск, pause/resume и запуск по расписанию
+- job-level runtime-тюнинг `rclone`: `transfers`, `checkers` и `fast-list` как часть самой задачи для long-running и small-files сценариев
 - S3-специфичные поля профиля в UI
 - более понятные hints для локальных путей и `rclone remotes` на странице профилей
 - явные подсказки в `/profiles` и `/setup`, что для `Synology SMB` нужно использовать mount path из `/Volumes`, а не `smb://...`
@@ -171,6 +172,7 @@
 - устойчивый `launchd` service-mode через service-копию вне `~/Documents`, чтобы macOS background auto-start не ломался на TCC/privacy ограничениях
 - operational-скрипт `scripts/update_launchd_service.sh` для выката repo-кода в service-копию и controlled restart LaunchAgent
 - operational-скрипт `scripts/launchd_status.sh` для проверки loaded/running state агента, PID, listener и хвоста service-логов
+- additive миграция `sync_jobs` для безопасного добавления новых runtime-полей в уже существующую локальную SQLite-базу
 
 ### Чего пока нет
 
@@ -224,14 +226,15 @@ rclone lsf "S3 Beget:bucket-name" --max-depth 1
 - restart-safe режим пока ограничен восстановлением последнего известного состояния и переводом run в `interrupted`
 - автоматического продолжения уже стартовавшего `rclone` процесса после рестарта нет и не планируется: recovery идет через repeat-from-delta
 - `S3 remote` в интерфейсе удобнее редактируется, но сам `rclone remote` все равно должен существовать заранее
+- runtime tuning пока хранится только на уровне job; `profile defaults + job override` остаются следующим шагом product UX
 - retry-логика завязана на временные сетевые ошибки и пока не выносится в UI-настройки
 - часть UX еще рассчитана на ручную эксплуатацию, а не на долгоживущий production-like сервис
 - перенос конфигурации между машинами и восстановление после reinstall пока не закрыты отдельным backup/restore UX
 
 ## Что логично делать дальше
 
-1. Вынести полную историю запусков в отдельный archive-экран и оставить на `/`, `/jobs`, `/runs` только operational slices.
-2. Добавить pagination и ручную cleanup-очистку локальной run history как дополнение к retention.
-3. После этого вернуться к backup/restore конфигурации без секретов.
-4. Доработать операционный слой: notifications и migration flow service-mode на другой `Mac`.
-5. Связать диагностику профилей с `Ops / Runbook` еще плотнее и затем сделать guided setup для `rclone remote`.
+1. Вернуться к backup/restore конфигурации без секретов как к главному эксплуатационному пробелу после `v2.1.0`.
+2. Доработать операционный слой: notifications и migration flow service-mode на другой `Mac`.
+3. Добавить `profile defaults` для runtime-параметров `rclone` поверх уже существующего `job override`.
+4. После этого углубить diagnostics-to-ops mapping и guided setup для `rclone remote`.
+5. Сохранять адресный operational polish без возврата к широкому visual redesign.

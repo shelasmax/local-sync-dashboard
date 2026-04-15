@@ -49,7 +49,23 @@
 - более плотная связка `последняя проверка` → `что проверить` → `что сделать дальше`
 - richer scenarios для network/auth/mount/endpoint problems
 
-### 5. Адресный operational polish без редизайна
+### 5. `rclone` runtime-параметры как `profile defaults + job override`
+
+Почему важно:
+- на long-running маршрутах вроде `Synology SMB -> Yandex Disk` скорость часто определяется не только сетью, но и runtime-настройками `rclone`
+- job-level runtime tuning уже есть в продукте, но пока это только часть решения
+- часть настроек логичнее хранить как дефолты конкретного профиля / endpoint, а часть — как override у конкретного маршрута
+
+Что должно быть:
+- `profile defaults` для runtime-параметров `rclone`, которые разумно привязаны к конкретному хранилищу / endpoint
+- уже существующий `job override` должен остаться и стать верхним слоем конфигурации для случаев, когда конкретный маршрут требует более агрессивной или более осторожной настройки
+- явное правило приоритета: сначала override задачи, затем default профиля, затем базовые дефолты приложения
+- безопасные рекомендованные значения и helper-текст для сценариев с большим числом маленьких файлов
+- понятное разделение между безопасными дефолтами и более рискованными power-user настройками
+- отображение effective `rclone` runtime flags в preview / run detail, чтобы пользователь понимал, с чем именно пошел запуск
+- миграционный путь без поломки уже сохраненных job-level настроек
+
+### 6. Адресный operational polish без редизайна
 
 Почему важно:
 - visual system уже стабилизирован
@@ -62,7 +78,7 @@
 
 ## P2
 
-### 6. Более явная диагностика mount path для Synology / SMB
+### 7. Более явная диагностика mount path для Synology / SMB
 
 Почему важно:
 - ошибки вида `/home/...` vs `/Volumes/...` выглядят как сбой `rclone`, хотя корень проблемы в настройке профиля
@@ -73,7 +89,7 @@
 - более явная связка между SMB URL из Finder и локальным путём в `/Volumes`
 - отдельные UX-сценарии для случаев, когда mount path отвалился после sleep или переподключения сети
 
-### 7. Более богатый operational runbook
+### 8. Более богатый operational runbook
 
 Почему важно:
 - базовый `/ops` уже есть, но пока это ещё не полноценный рабочий операционный контур
@@ -111,6 +127,8 @@
 - service-copy flow для `launchd` вне `~/Documents`, чтобы автоподъём на macOS работал без TCC-ошибок
 - `scripts/update_launchd_service.sh` для синхронизации service-копии и controlled restart `launchd`-агента
 - `scripts/launchd_status.sh` для проверки loaded/running state агента, listener на `127.0.0.1:8000` и хвоста service-логов
+- job-level runtime tuning `rclone` в задаче: `transfers`, `checkers`, `fast-list`
+- additive миграция `sync_jobs`, чтобы новые runtime-поля доезжали в существующую локальную БД без reset
 - явные подсказки в `/profiles`, `/setup` и docs, что `Synology SMB` нужно заводить через локальный путь `/Volumes/...`, а не через `smb://...`
 - helper-блоки в `/profiles`, ведущие из типовых diagnostic проблем в конкретные сценарии `/ops`
 - counters на `/profiles` и более action-oriented profile helper UX

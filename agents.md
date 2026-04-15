@@ -46,6 +46,7 @@
 - `app/services/profiles.py` — профили и проверки доступности
 - `app/services/jobs.py` — runtime и scheduler
 - `app/services/rclone.py` — команды `rclone`
+- `app/database.py` — additive миграции локальной SQLite-схемы
 - `app/templates/*.html` — UI
 - `app/static/style.css` — стили
 - `app/static/favicon.svg` — favicon
@@ -82,15 +83,16 @@ rclone lsf "S3 Beget:bucket-name" --max-depth 1
 
 1. Экспорт и backup/restore конфигурации приложения без секретов
 2. Операционный UX: нотификации и migration flow service-mode на другой `Mac`
-3. Guided setup для `rclone remote`
-4. Связка диагностики профилей с `Ops / Runbook` и более глубокие action-oriented подсказки
-5. Дальнейшая адресная калибровка operational helper-блоков и incident UX без широкого редизайна
+3. `profile defaults` для runtime-параметров `rclone` поверх уже существующего `job override`
+4. Guided setup для `rclone remote`
+5. Связка диагностики профилей с `Ops / Runbook` и более глубокие action-oriented подсказки
 
 Примечание:
 - релиз `v1.1.0` уже зафиксировал `Control Room`, list-first экраны и более компактный shell; следующие правки должны быть адресными, а не широким редизайном.
 - релиз `v1.2.1` уже зафиксировал archive UX для запусков: отдельный `/runs/archive`, pagination, ручную cleanup-очистку локальной истории, компактные recovery-блоки и persistent `Скрыть` / `Показать`; следующий шаг в этой зоне — не расширять историю обратно в operational surfaces.
 - релиз `v1.3.0` уже зафиксировал прямую связку profile diagnostics → `/ops`, counters на `/profiles` и более устойчивый `/runs` с empty-state вместо пропадающих operational секций.
 - релиз `v2.0.0` уже зафиксировал service-copy model для `launchd`, канонический порт `8000` и operational-скрипты для update/status; следующий шаг в этой зоне — не возвращаться к запуску service-mode напрямую из `~/Documents`, а закрывать notifications и migration flow.
+- релиз `v2.1.0` уже зафиксировал job-level runtime-тюнинг `rclone` (`transfers`, `checkers`, `fast-list`) и additive миграцию `sync_jobs`; следующий шаг в этой зоне — profile defaults + job override, а не ручной service rollout ради каждой такой настройки.
 - верхний незакрытый продуктовый приоритет теперь эксплуатационный: переносимость конфигурации, service-mode и migration flow, а не новый visual layer.
 - встроенный экран `/ops` уже есть; следующие шаги в этой зоне — углублять corrective scenarios, а не строить второй параллельный troubleshooting UX.
 - базовая ручная перепроверка профилей, hints, сохранение последнего результата проверки, richer hints по типам ошибок и action-oriented CTA уже есть; прямые переходы из диагностики в сценарии `/ops` тоже уже есть. Следующий шаг — расширять покрытие сценариев после закрытия backup/restore и service-mode.

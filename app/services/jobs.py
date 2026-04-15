@@ -12,7 +12,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy import delete, func, select
 
 from app.config import settings
-from app.database import SessionLocal
+from app.database import SessionLocal, migrate_sync_jobs_table
 from app.models import AppSettings, ProfileType, RunHistory, RunStatus, StorageProfile, SyncJob
 from app.schemas import SyncJobPayload
 from app.services.common import decode_json, encode_json, is_temporary_network_error, relative_path_segments
@@ -65,6 +65,9 @@ def create_job(session, payload: SyncJobPayload) -> SyncJob:
         filters_json=encode_json(payload.filters),
         bandwidth_limit=payload.bandwidth_limit,
         verify_checksum=payload.verify_checksum,
+        rclone_transfers=payload.rclone_transfers,
+        rclone_checkers=payload.rclone_checkers,
+        rclone_fast_list=payload.rclone_fast_list,
     )
     session.add(job)
     session.commit()
@@ -97,6 +100,9 @@ def update_job(session, job_id: int, payload: SyncJobPayload) -> SyncJob:
     job.filters_json = encode_json(payload.filters)
     job.bandwidth_limit = payload.bandwidth_limit
     job.verify_checksum = payload.verify_checksum
+    job.rclone_transfers = payload.rclone_transfers
+    job.rclone_checkers = payload.rclone_checkers
+    job.rclone_fast_list = payload.rclone_fast_list
     session.commit()
     session.refresh(job)
     return job
@@ -384,6 +390,9 @@ def preview_job(session, job_id: int, timeout_seconds: int = 60) -> JobPreview:
         filters=filters,
         bandwidth_limit=job.bandwidth_limit,
         verify_checksum=job.verify_checksum,
+        transfers=job.rclone_transfers,
+        checkers=job.rclone_checkers,
+        fast_list=job.rclone_fast_list,
         dry_run=True,
     )
     dry_run_result = execute(dry_run_command, timeout_seconds=timeout_seconds)
@@ -493,6 +502,7 @@ class JobRunner:
             self.sync_job(job.id)
 
     def sync_job(self, job_id: int) -> None:
+        migrate_sync_jobs_table()
         with SessionLocal() as session:
             job = session.get(SyncJob, job_id)
             if not job:
@@ -589,6 +599,9 @@ class JobRunner:
                     filters=filters,
                     bandwidth_limit=job.bandwidth_limit,
                     verify_checksum=job.verify_checksum,
+                    transfers=job.rclone_transfers,
+                    checkers=job.rclone_checkers,
+                    fast_list=job.rclone_fast_list,
                 )
 
                 initiated_labels = {

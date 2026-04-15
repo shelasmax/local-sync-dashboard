@@ -70,6 +70,9 @@ def build_copy_command(
     filters: list[str] | None = None,
     bandwidth_limit: str | None = None,
     verify_checksum: bool = False,
+    transfers: int | None = None,
+    checkers: int | None = None,
+    fast_list: bool = False,
     dry_run: bool = False,
 ) -> list[str]:
     command = [
@@ -89,6 +92,12 @@ def build_copy_command(
         command.append("--dry-run")
     if bandwidth_limit:
         command.extend(["--bwlimit", bandwidth_limit])
+    if transfers is not None:
+        command.extend(["--transfers", str(transfers)])
+    if checkers is not None:
+        command.extend(["--checkers", str(checkers)])
+    if fast_list:
+        command.append("--fast-list")
     for filter_rule in filters or []:
         command.extend(["--filter", filter_rule])
     return command

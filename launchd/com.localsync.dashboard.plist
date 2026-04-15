@@ -20,6 +20,8 @@
 
     <key>EnvironmentVariables</key>
     <dict>
+      <key>PATH</key>
+      <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
       <key>LOCAL_SYNC_DATA_DIR</key>
       <string>/ABSOLUTE/PATH/TO/S3_Synology-to-Yandex_DIsk/var</string>
     </dict>

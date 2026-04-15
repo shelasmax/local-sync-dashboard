@@ -50,6 +50,9 @@ class SyncJobPayload(BaseModel):
     filters: list[str] = Field(default_factory=list)
     bandwidth_limit: str | None = Field(default=None, max_length=32)
     verify_checksum: bool = False
+    rclone_transfers: int | None = Field(default=None, ge=1, le=64)
+    rclone_checkers: int | None = Field(default=None, ge=1, le=128)
+    rclone_fast_list: bool = False
 
     @field_validator("name", "source_path", "target_path", "schedule", mode="before")
     @classmethod
@@ -73,6 +76,23 @@ class SyncJobPayload(BaseModel):
             return [line.strip() for line in value.splitlines() if line.strip()]
         return [str(item).strip() for item in value if str(item).strip()]
 
+    @field_validator("bandwidth_limit", mode="before")
+    @classmethod
+    def normalize_bandwidth_limit(cls, value):
+        if value is None:
+            return None
+        if isinstance(value, str):
+            normalized = value.strip()
+            return normalized or None
+        return value
+
+    @field_validator("rclone_transfers", "rclone_checkers", mode="before")
+    @classmethod
+    def normalize_optional_ints(cls, value):
+        if value in (None, ""):
+            return None
+        return value
+
 
 class SyncJobRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -89,6 +109,9 @@ class SyncJobRead(BaseModel):
     filters_json: str
     bandwidth_limit: str | None
     verify_checksum: bool
+    rclone_transfers: int | None
+    rclone_checkers: int | None
+    rclone_fast_list: bool
 
 
 class RunHistoryRead(BaseModel):
@@ -104,4 +127,3 @@ class RunHistoryRead(BaseModel):
     files_transferred: int
     stdout: str
     stderr: str
-
