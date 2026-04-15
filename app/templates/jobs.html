@@ -3,9 +3,52 @@
 {% block content %}
   {% if has_active_runs %}
     <script>
-      window.setTimeout(function () {
-        window.location.reload();
-      }, 10000);
+      (() => {
+        function fmtBytes(v) {
+          if (!v) return "0 B";
+          let a = Number(v), u = 0;
+          const units = ["B","KiB","MiB","GiB","TiB"];
+          while (a >= 1024 && u < units.length - 1) { a /= 1024; u++; }
+          return u === 0 ? `${a} ${units[u]}` : `${a.toFixed(1)} ${units[u]}`;
+        }
+        function fmtSpeed(v) { return (!v || !isFinite(v)) ? "0 B/s" : fmtBytes(v) + "/s"; }
+        function fmtEta(s) {
+          if (s == null) return "ETA неизвестно";
+          if (s <= 0) return "меньше минуты";
+          let m = Math.floor(s / 60), h, d;
+          h = Math.floor(m / 60); m %= 60;
+          d = Math.floor(h / 24); h %= 24;
+          const p = [];
+          if (d) p.push(d + " д");
+          if (h) p.push(h + " ч");
+          if (m && p.length < 2) p.push(m + " мин");
+          return p.length ? p.join(" ") : "меньше минуты";
+        }
+        let wasActive = true;
+        setInterval(() => {
+          fetch("/api/runtime/jobs").then(r => r.json()).then(data => {
+            const runs = data.active_runs || {};
+            const activeCount = Object.keys(runs).length;
+            if (wasActive && activeCount === 0) { window.location.reload(); return; }
+            wasActive = activeCount > 0;
+            document.querySelectorAll(".job-card").forEach(card => {
+              const form = card.querySelector("form[action$='/run']");
+              const match = form?.action?.match(/\/jobs\/(\d+)\//);
+              const jobId = match ? match[1] : null;
+              const live = runs[jobId];
+              const el = card.querySelector(".live-status");
+              if (!live || !el) return;
+              el.querySelector(".live-meta").innerHTML =
+                `<span>${fmtBytes(live.bytes_transferred)} из ${fmtBytes(live.total_bytes)}</span>` +
+                `<span>${live.progress_percent}%</span>` +
+                `<span>${fmtSpeed(live.speed)}</span>` +
+                `<span>${fmtEta(live.eta_seconds)}</span>`;
+              const bar = el.querySelector(".progress-bar span");
+              if (bar) bar.style.width = live.progress_percent + "%";
+            });
+          }).catch(() => {});
+        }, 10000);
+      })();
     </script>
   {% endif %}
 

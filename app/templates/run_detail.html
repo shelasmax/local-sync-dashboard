@@ -3,9 +3,51 @@
 {% block content %}
   {% if active_run and active_run.run_id == run.id %}
     <script>
-      window.setTimeout(function () {
-        window.location.reload();
-      }, 10000);
+      (() => {
+        function fmtBytes(v) {
+          if (!v) return "0 B";
+          let a = Number(v), u = 0;
+          const units = ["B","KiB","MiB","GiB","TiB"];
+          while (a >= 1024 && u < units.length - 1) { a /= 1024; u++; }
+          return u === 0 ? `${a} ${units[u]}` : `${a.toFixed(1)} ${units[u]}`;
+        }
+        function fmtSpeed(v) { return (!v || !isFinite(v)) ? "0 B/s" : fmtBytes(v) + "/s"; }
+        function fmtEta(s) {
+          if (s == null) return "ETA неизвестно";
+          if (s <= 0) return "меньше минуты";
+          let m = Math.floor(s / 60), h, d;
+          h = Math.floor(m / 60); m %= 60;
+          d = Math.floor(h / 24); h %= 24;
+          const p = [];
+          if (d) p.push(d + " д");
+          if (h) p.push(h + " ч");
+          if (m && p.length < 2) p.push(m + " мин");
+          return p.length ? p.join(" ") : "меньше минуты";
+        }
+        const jobId = {{ run.job_id }};
+        let wasActive = true;
+        setInterval(() => {
+          fetch("/api/runtime/jobs").then(r => r.json()).then(data => {
+            const live = (data.active_runs || {})[jobId];
+            if (wasActive && !live) { window.location.reload(); return; }
+            wasActive = !!live;
+            const el = document.querySelector(".live-status");
+            if (!live || !el) return;
+            const metas = el.querySelectorAll(".live-meta");
+            if (metas[0]) metas[0].innerHTML =
+              `<span>${fmtBytes(live.bytes_transferred)} из ${fmtBytes(live.total_bytes)}</span>` +
+              `<span>${live.progress_percent}%</span>` +
+              `<span>${fmtSpeed(live.speed)}</span>` +
+              `<span>${fmtEta(live.eta_seconds)}</span>`;
+            const bar = el.querySelector(".progress-bar span");
+            if (bar) bar.style.width = live.progress_percent + "%";
+            if (metas[1]) metas[1].innerHTML =
+              `<span>Файлы: ${live.files_transferred} / ${live.total_files}</span>` +
+              `<span>Проверки: ${live.checks} / ${live.total_checks}</span>` +
+              `<span>Обновлено: ${live.updated_at}</span>`;
+          }).catch(() => {});
+        }, 10000);
+      })();
     </script>
   {% endif %}
 

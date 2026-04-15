@@ -108,6 +108,8 @@
 - встроенный экран `/ops` с базовым operational runbook
 - явные подсказки в `/profiles`, `/setup` и docs, что `Synology SMB` нужно заводить через локальный путь `/Volumes/...`, а не через `smb://...`
 - базовая чистка адаптивной верстки и cleanup тестового harness без `ResourceWarning`
+- AJAX-поллинг `/api/runtime/jobs` вместо `location.reload()` на `/jobs`, `/runs`, `/run_detail`: устраняет блокировку UI при активных rclone-задачах
+- TTL-кеш (30с) для `collect_setup_diagnostics()`: устраняет повторные `rclone listremotes` и сканирование `/Volumes` на каждый рендер страницы
 
 ## Отдельно вне MVP
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -63,7 +64,16 @@ def discover_local_candidates(home: Path | None = None, volumes_dir: Path | None
     }
 
 
+_DIAGNOSTICS_CACHE: tuple[float, SetupDiagnostics] | None = None
+_DIAGNOSTICS_TTL = 30.0
+
+
 def collect_setup_diagnostics() -> SetupDiagnostics:
+    global _DIAGNOSTICS_CACHE
+    now = time.monotonic()
+    if _DIAGNOSTICS_CACHE and (now - _DIAGNOSTICS_CACHE[0]) < _DIAGNOSTICS_TTL:
+        return _DIAGNOSTICS_CACHE[1]
+
     remotes, remote_error = list_rclone_remotes()
     local_candidates = discover_local_candidates()
     issues: list[str] = []
@@ -77,12 +87,14 @@ def collect_setup_diagnostics() -> SetupDiagnostics:
     if not local_candidates["mounted_volumes"]:
         issues.append("В /Volumes не найдены смонтированные внешние диски или NAS-шары.")
 
-    return SetupDiagnostics(
+    result = SetupDiagnostics(
         rclone_available=is_available(),
         remotes=remotes,
         local_candidates=local_candidates,
         issues=issues,
     )
+    _DIAGNOSTICS_CACHE = (now, result)
+    return result
 
 
 def _existing(paths: list[Path]) -> list[str]:

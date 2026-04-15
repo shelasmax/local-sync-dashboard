@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.1.1 - 2026-04-15
+
+- Fixed UI blocking during active rclone jobs: replaced `window.location.reload()` with AJAX polling to `/api/runtime/jobs` on `/jobs`, `/runs`, `/run_detail` pages. Full page reload now only triggers when a job transitions from active to finished.
+- Added 30-second TTL cache for `collect_setup_diagnostics()` to avoid repeated `rclone listremotes` subprocess calls and `/Volumes` filesystem scans on every HTML page render.
+
 ## v1.1.0 - 2026-04-15
 
 - Stabilization release for `Control Room` UI and route safety.
