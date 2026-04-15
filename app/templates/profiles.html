@@ -12,6 +12,21 @@
     </div>
   </section>
 
+  <section class="metric-strip">
+    <article class="metric-tile">
+      <span>Всего профилей</span>
+      <strong>{{ profile_stats.total }}</strong>
+    </article>
+    <article class="metric-tile">
+      <span>Готовы</span>
+      <strong>{{ profile_stats.ready }}</strong>
+    </article>
+    <article class="metric-tile">
+      <span>Требуют внимания</span>
+      <strong>{{ profile_stats.attention }}</strong>
+    </article>
+  </section>
+
   <section class="control-grid">
     <article class="panel form-panel">
       <div class="panel-header">
@@ -146,6 +161,7 @@
             {% set last_check = profile_last_check(profile) %}
             {% set diagnostic_hints = profile_diagnostic_hints(profile, configured_remotes) %}
             {% set diagnostic_actions = profile_diagnostic_actions(profile, configured_remotes) %}
+            {% set runbook = profile_diagnostic_runbook(profile, configured_remotes) %}
             <article class="control-card profile-card {% if checked_profile_id == profile.id %}row-highlight{% endif %}">
               <div class="profile-card-layout">
                 <section class="profile-card-main">
@@ -175,6 +191,17 @@
                       </ul>
                     </div>
                   {% endif %}
+                  {% if runbook %}
+                    <div class="incident-panel incident-info compact-incident">
+                      <div class="incident-main">
+                        <span class="status-dot status-info"></span>
+                        <div>
+                          <strong>{{ runbook.title }}</strong>
+                          <p>{{ runbook.summary }}</p>
+                        </div>
+                      </div>
+                    </div>
+                  {% endif %}
                   </div>
                 </section>
 
@@ -198,6 +225,9 @@
                         <a class="button tertiary" href="{{ action.href }}">{{ action.label }}</a>
                       {% endif %}
                     {% endfor %}
+                    {% if runbook %}
+                      <a class="button tertiary" href="{{ runbook.href }}">{{ runbook.label }}</a>
+                    {% endif %}
                     <div class="secondary-action-row">
                       <form method="post" action="/profiles/{{ profile.id }}/delete" onsubmit="return confirm('Удалить этот профиль из приложения? Данные в хранилищах удалены не будут.');">
                         <button class="button tertiary icon-button" type="submit" title="Удалить" aria-label="Удалить">

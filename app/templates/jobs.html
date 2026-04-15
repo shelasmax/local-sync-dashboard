@@ -3,18 +3,20 @@
 {% block content %}
   {% if has_active_runs %}
     <script>
-      (() => {
+      document.addEventListener("DOMContentLoaded", () => {
         function initCollapsible(storageKey, toggleId, bodyId, defaultExpanded = true) {
           const toggle = document.getElementById(toggleId);
           const body = document.getElementById(bodyId);
           if (!toggle || !body) return;
-          const saved = localStorage.getItem(storageKey);
-          let expanded = saved === null ? defaultExpanded : saved !== "collapsed";
-          function render() {
-            body.hidden = !expanded;
-            toggle.textContent = expanded ? "Скрыть" : "Показать";
-            localStorage.setItem(storageKey, expanded ? "expanded" : "collapsed");
-          }
+        const saved = localStorage.getItem(storageKey);
+        let expanded = saved === null ? defaultExpanded : saved !== "collapsed";
+        function render() {
+          body.hidden = !expanded;
+          body.style.display = expanded ? "" : "none";
+          toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+          toggle.textContent = expanded ? "Скрыть" : "Показать";
+          localStorage.setItem(storageKey, expanded ? "expanded" : "collapsed");
+        }
           toggle.addEventListener("click", () => {
             expanded = !expanded;
             render();
@@ -66,11 +68,11 @@
           }).catch(() => {});
         }, 10000);
         initCollapsible("jobs-recovery-section", "toggle-jobs-recovery", "jobs-recovery-body", true);
-      })();
+      });
     </script>
   {% elif interrupted_runs %}
     <script>
-      (() => {
+      document.addEventListener("DOMContentLoaded", () => {
         function initCollapsible(storageKey, toggleId, bodyId, defaultExpanded = true) {
           const toggle = document.getElementById(toggleId);
           const body = document.getElementById(bodyId);
@@ -89,7 +91,7 @@
           render();
         }
         initCollapsible("jobs-recovery-section", "toggle-jobs-recovery", "jobs-recovery-body", true);
-      })();
+      });
     </script>
   {% endif %}
 

@@ -3,18 +3,20 @@
 {% block content %}
   {% if has_active_runs %}
     <script>
-      (() => {
+      document.addEventListener("DOMContentLoaded", () => {
         function initCollapsible(storageKey, toggleId, bodyId, defaultExpanded = true) {
           const toggle = document.getElementById(toggleId);
           const body = document.getElementById(bodyId);
           if (!toggle || !body) return;
-          const saved = localStorage.getItem(storageKey);
-          let expanded = saved === null ? defaultExpanded : saved !== "collapsed";
-          function render() {
-            body.hidden = !expanded;
-            toggle.textContent = expanded ? "Скрыть" : "Показать";
-            localStorage.setItem(storageKey, expanded ? "expanded" : "collapsed");
-          }
+        const saved = localStorage.getItem(storageKey);
+        let expanded = saved === null ? defaultExpanded : saved !== "collapsed";
+        function render() {
+          body.hidden = !expanded;
+          body.style.display = expanded ? "" : "none";
+          toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+          toggle.textContent = expanded ? "Скрыть" : "Показать";
+          localStorage.setItem(storageKey, expanded ? "expanded" : "collapsed");
+        }
           toggle.addEventListener("click", () => {
             expanded = !expanded;
             render();
@@ -64,22 +66,24 @@
         }, 10000);
         initCollapsible("runs-active-section", "toggle-active-runs", "active-runs-body", true);
         initCollapsible("runs-recovery-section", "toggle-recovery-runs", "recovery-runs-body", true);
-      })();
+      });
     </script>
   {% elif true %}
     <script>
-      (() => {
+      document.addEventListener("DOMContentLoaded", () => {
         function initCollapsible(storageKey, toggleId, bodyId, defaultExpanded = true) {
           const toggle = document.getElementById(toggleId);
           const body = document.getElementById(bodyId);
           if (!toggle || !body) return;
-          const saved = localStorage.getItem(storageKey);
-          let expanded = saved === null ? defaultExpanded : saved !== "collapsed";
-          function render() {
-            body.hidden = !expanded;
-            toggle.textContent = expanded ? "Скрыть" : "Показать";
-            localStorage.setItem(storageKey, expanded ? "expanded" : "collapsed");
-          }
+        const saved = localStorage.getItem(storageKey);
+        let expanded = saved === null ? defaultExpanded : saved !== "collapsed";
+        function render() {
+          body.hidden = !expanded;
+          body.style.display = expanded ? "" : "none";
+          toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+          toggle.textContent = expanded ? "Скрыть" : "Показать";
+          localStorage.setItem(storageKey, expanded ? "expanded" : "collapsed");
+        }
           toggle.addEventListener("click", () => {
             expanded = !expanded;
             render();
@@ -88,7 +92,7 @@
         }
         initCollapsible("runs-active-section", "toggle-active-runs", "active-runs-body", true);
         initCollapsible("runs-recovery-section", "toggle-recovery-runs", "recovery-runs-body", true);
-      })();
+      });
     </script>
   {% endif %}
 
@@ -118,19 +122,19 @@
     </section>
   {% endif %}
 
-  {% if active_run_cards %}
-    <section class="panel">
-      <div class="panel-header">
-        <div>
-          <span class="section-kicker">Active</span>
-          <h3>Активные запуски</h3>
-        </div>
-        <div class="secondary-action-row">
-          <span class="panel-note">Здесь остаются только те run, у которых прямо сейчас есть live progress.</span>
-          <button class="button secondary" type="button" id="toggle-active-runs">Скрыть</button>
-        </div>
+  <section class="panel">
+    <div class="panel-header">
+      <div>
+        <span class="section-kicker">Active</span>
+        <h3>Активные запуски</h3>
       </div>
-      <div class="control-list runs-list" id="active-runs-body">
+      <div class="secondary-action-row">
+        <span class="panel-note">Здесь остаются только те run, у которых прямо сейчас есть live progress.</span>
+        <button class="button secondary" type="button" id="toggle-active-runs">Скрыть</button>
+      </div>
+    </div>
+    <div class="control-list runs-list" id="active-runs-body">
+      {% if active_run_cards %}
         {% for item in active_run_cards %}
           {% set run = item.run %}
           {% set live = item.snapshot %}
@@ -178,27 +182,37 @@
             </div>
           </article>
         {% endfor %}
-      </div>
-    </section>
-  {% endif %}
+      {% else %}
+        <article class="incident-panel incident-info compact-incident">
+          <div class="incident-main">
+            <span class="status-dot status-info"></span>
+            <div>
+              <strong>Сейчас live-запусков нет</strong>
+              <p>Когда задача реально выполняется и пишет runtime snapshot, она появится здесь с прогрессом и ETA.</p>
+            </div>
+          </div>
+        </article>
+      {% endif %}
+    </div>
+  </section>
 
-  {% if interrupted_runs %}
-    <section class="panel stack-panel">
-      <div class="panel-header">
-        <div>
-          <span class="section-kicker">Recovery</span>
-          <h3>Прерванные запуски</h3>
-        </div>
-        <div class="secondary-action-row">
-          <span class="panel-note">Показываем только последний interrupted run.</span>
-          <button class="button secondary" type="button" id="toggle-recovery-runs">Скрыть</button>
-        </div>
+  <section class="panel stack-panel">
+    <div class="panel-header">
+      <div>
+        <span class="section-kicker">Recovery</span>
+        <h3>Прерванные запуски</h3>
       </div>
-      <div class="panel-header">
-        <div></div>
-        <a class="button secondary" href="/runs/archive">Архив запусков</a>
+      <div class="secondary-action-row">
+        <span class="panel-note">Показываем только последний interrupted run.</span>
+        <button class="button secondary" type="button" id="toggle-recovery-runs">Скрыть</button>
       </div>
-      <div class="incident-list" id="recovery-runs-body">
+    </div>
+    <div class="panel-header">
+      <div></div>
+      <a class="button secondary" href="/runs/archive">Архив запусков</a>
+    </div>
+    <div class="incident-list" id="recovery-runs-body">
+      {% if interrupted_runs %}
         {% for run in interrupted_runs %}
           <article class="incident-panel incident-warn">
             <div class="incident-main">
@@ -228,9 +242,19 @@
             </div>
           </article>
         {% endfor %}
-      </div>
-    </section>
-  {% endif %}
+      {% else %}
+        <article class="incident-panel incident-info compact-incident">
+          <div class="incident-main">
+            <span class="status-dot status-info"></span>
+            <div>
+              <strong>Прерванных запусков сейчас нет</strong>
+              <p>Если run завершится со статусом `interrupted`, здесь останется самый свежий recovery-сценарий.</p>
+            </div>
+          </div>
+        </article>
+      {% endif %}
+    </div>
+  </section>
 
   <section class="panel">
     <div class="panel-header">

@@ -2,7 +2,7 @@
 
 {% block content %}
   <script>
-    (() => {
+    document.addEventListener("DOMContentLoaded", () => {
       function initCollapsible(storageKey, toggleId, bodyId, defaultExpanded = true) {
         const toggle = document.getElementById(toggleId);
         const body = document.getElementById(bodyId);
@@ -11,6 +11,8 @@
         let expanded = saved === null ? defaultExpanded : saved !== "collapsed";
         function render() {
           body.hidden = !expanded;
+          body.style.display = expanded ? "" : "none";
+          toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
           toggle.textContent = expanded ? "Скрыть" : "Показать";
           localStorage.setItem(storageKey, expanded ? "expanded" : "collapsed");
         }
@@ -22,7 +24,7 @@
       }
       initCollapsible("index-incident-board", "toggle-index-incidents", "index-incidents-body", true);
       initCollapsible("index-recovery-board", "toggle-index-recovery", "index-recovery-body", true);
-    })();
+    });
   </script>
 
   <section class="page-hero compact-hero">

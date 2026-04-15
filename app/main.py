@@ -625,6 +625,80 @@ def profile_diagnostic_actions(profile: StorageProfile, configured_remotes: set[
     return actions
 
 
+def profile_diagnostic_runbook(profile: StorageProfile, configured_remotes: set[str]) -> dict[str, str] | None:
+    try:
+        last_check = profile_last_check(profile)
+        message = str(last_check.get("message", "")).lower()
+
+        if profile.profile_type == ProfileType.SYNOLOGY_SHARE.value:
+            if (
+                str(profile.root_path_or_remote).startswith("/home")
+                or "directory not found" in message
+                or "no such file" in message
+                or "not found" in message
+            ):
+                return {
+                    "title": "Проверить Synology mount path",
+                    "summary": "Сверьте Finder SMB URL с локальным путём в `/Volumes` и уберите дублирование `source_path` поверх корня профиля.",
+                    "href": "/ops#ops-synology-path",
+                    "label": "Сценарий Synology",
+                }
+
+        if profile.profile_type in {ProfileType.LOCAL_FOLDER.value, ProfileType.SYNOLOGY_SHARE.value}:
+            candidate = Path(str(profile.root_path_or_remote)).expanduser()
+            if not candidate.exists() or "permission" in message or "access" in message:
+                return {
+                    "title": "Проверить локальный путь",
+                    "summary": "Это похоже на проблему mount path, прав доступа или переподключения тома после sleep.",
+                    "href": "/ops#ops-local-path",
+                    "label": "Сценарий path/mount",
+                }
+
+        remote_name, _, _ = split_s3_remote_root(str(profile.root_path_or_remote))
+        if remote_name and remote_name not in configured_remotes:
+            return {
+                "title": "Исправить missing remote",
+                "summary": "Сначала проверьте `rclone listremotes`, затем вернитесь в профиль и перепроверьте подключение.",
+                "href": "/ops#ops-remote-not-found",
+                "label": "Сценарий missing remote",
+            }
+
+        if "unauthorized" in message or "401" in message or "403" in message or "access denied" in message:
+            return {
+                "title": "Перепроверить авторизацию",
+                "summary": "Сценарий для облачных профилей с проблемами OAuth, ключей доступа или прав на bucket.",
+                "href": "/ops#ops-cloud-auth",
+                "label": "Сценарий auth / rights",
+            }
+
+        if "timeout" in message or "tls" in message or "connection" in message or "no such host" in message:
+            return {
+                "title": "Проверить сеть перед новым запуском",
+                "summary": "Сначала убедитесь, что интернет, DNS и endpoint снова доступны, затем повторите проверку профиля.",
+                "href": "/ops#ops-night-runs",
+                "label": "Сценарий network / cloud",
+            }
+
+        if profile.status != "ready":
+            return {
+                "title": "Открыть общий runbook",
+                "summary": "Если причина неочевидна, начните с типовых симптомов и recovery-шагов в operational runbook.",
+                "href": "/ops#ops-incidents",
+                "label": "Общий сценарий",
+            }
+    except Exception:
+        return None
+    return None
+
+
+def profile_stats(profiles: list[StorageProfile]) -> dict[str, int]:
+    return {
+        "total": len(profiles),
+        "ready": sum(1 for profile in profiles if profile.status == "ready"),
+        "attention": sum(1 for profile in profiles if profile.status != "ready"),
+    }
+
+
 def normalize_profile_form_inputs(
     *,
     profile_type: str,
@@ -794,7 +868,7 @@ def _list_interrupted_runs(session: Session, limit: int = 5) -> list[RunHistory]
 def _list_incident_runs(session: Session, limit: int = 10) -> list[RunHistory]:
     return _list_runs_with_status(
         session,
-        [RunStatus.FAILED.value, RunStatus.BLOCKED.value],
+        [RunStatus.FAILED.value, RunStatus.BLOCKED.value, RunStatus.INTERRUPTED.value],
         limit=limit,
     )
 
@@ -974,13 +1048,17 @@ def profiles_page(
     session: Session = Depends(get_session),
 ):
     profiles = _list_profiles(session)
-    configured_remotes = set(collect_setup_diagnostics().remotes)
+    try:
+        configured_remotes = set(collect_setup_diagnostics().remotes)
+    except Exception:
+        configured_remotes = set()
     return templates.TemplateResponse(
         request=request,
         name="profiles.html",
         context={
             "request": request,
             "profiles": profiles,
+            "profile_stats": profile_stats(profiles),
             "profile_types": [item.value for item in ProfileType],
             "profile_type_label": profile_type_label,
             "status_label": status_label,
@@ -988,6 +1066,7 @@ def profiles_page(
             "profile_last_check": profile_last_check,
             "profile_diagnostic_hints": profile_diagnostic_hints,
             "profile_diagnostic_actions": profile_diagnostic_actions,
+            "profile_diagnostic_runbook": profile_diagnostic_runbook,
             "configured_remotes": configured_remotes,
             "prefill": build_profile_prefill(
                 suggested_name=suggested_name,

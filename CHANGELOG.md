@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.3.0 - 2026-04-15
+
+### Diagnostics-to-ops and operational screen hardening
+
+- Linked profile diagnostics more tightly with `/ops`: `/profiles` now shows profile counters, contextual helper blocks, and direct runbook links for missing remote, auth/rights, local path, and Synology mount-path scenarios.
+- Hardened operational surfaces on `/runs`: active, recovery, and incident sections now stay visible as dedicated surfaces and render explicit empty-state guidance when there is no live runtime snapshot.
+- Fixed persisted `Скрыть` / `Показать` controls so they actually hide and restore content on `/`, `/jobs`, and `/runs`, while keeping the browser-stored expanded/collapsed state.
+- Expanded run incidents on `/runs` to include interrupted history alongside failed/blocked runs, so the operational screen still shows actionable context even when there are no active snapshots.
+- Added defensive fallback in `/profiles`: setup diagnostics failures no longer take the whole page down with `500`, and the page can still render with an empty remote set.
+
 ## v1.2.1 - 2026-04-15
 
 ### Archive UX and compact operational surfaces

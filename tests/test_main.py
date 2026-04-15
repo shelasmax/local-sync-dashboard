@@ -29,6 +29,7 @@ from app.main import (
     prefill_job_payload,
     profile_diagnostic_actions,
     profile_diagnostic_hints,
+    profile_diagnostic_runbook,
     profiles_page,
     run_detail_page,
     runs_archive_page,
@@ -193,6 +194,28 @@ class MainHelpersTest(unittest.TestCase):
         self.assertIn("Исправить профиль", labels)
         self.assertIn("Проверить после исправления", labels)
 
+    def test_profile_diagnostic_runbook_for_missing_remote(self):
+        profile = self.make_profile(ProfileType.S3_REMOTE, "missingremote:bucket")
+        profile.status = "unreachable"
+        profile.options_json = '{"_diagnostics":{"message":"remote not found"}}'
+
+        runbook = profile_diagnostic_runbook(profile, configured_remotes={"yadisk"})
+
+        self.assertIsNotNone(runbook)
+        assert runbook is not None
+        self.assertEqual(runbook["href"], "/ops#ops-remote-not-found")
+
+    def test_profile_diagnostic_runbook_for_synology_path_problem(self):
+        profile = self.make_profile(ProfileType.SYNOLOGY_SHARE, "/home/Ext_HDD")
+        profile.status = "unreachable"
+        profile.options_json = '{"_diagnostics":{"message":"directory not found"}}'
+
+        runbook = profile_diagnostic_runbook(profile, configured_remotes=set())
+
+        self.assertIsNotNone(runbook)
+        assert runbook is not None
+        self.assertEqual(runbook["href"], "/ops#ops-synology-path")
+
     def test_profiles_page_shows_synology_mount_path_hint(self):
         engine = create_engine("sqlite:///:memory:", future=True)
         TestingSession = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
@@ -222,6 +245,76 @@ class MainHelpersTest(unittest.TestCase):
 
         self.assertIn("Как указывать путь для Synology", body)
         self.assertIn("/Volumes/home", body)
+
+    def test_profiles_page_shows_ops_runbook_link_for_problem_profile(self):
+        engine = create_engine("sqlite:///:memory:", future=True)
+        TestingSession = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+        Base.metadata.create_all(engine)
+        session = TestingSession()
+        problem = StorageProfile(
+            name="Broken S3",
+            profile_type=ProfileType.S3_REMOTE.value,
+            root_path_or_remote="missingremote:bucket",
+            status="unreachable",
+            options_json='{"_diagnostics":{"message":"remote not found"}}',
+        )
+        session.add(problem)
+        session.commit()
+        try:
+            request = Request(
+                {
+                    "type": "http",
+                    "http_version": "1.1",
+                    "method": "GET",
+                    "scheme": "http",
+                    "path": "/profiles",
+                    "raw_path": b"/profiles",
+                    "query_string": b"",
+                    "headers": [],
+                    "client": ("testclient", 50000),
+                    "server": ("testserver", 80),
+                }
+            )
+            with patch("app.main.collect_setup_diagnostics", return_value=type("Diagnostics", (), {"remotes": [], "issues": [], "local_candidates": {"icloud": [], "google_drive": [], "mounted_volumes": []}, "rclone_available": True})()):
+                response = profiles_page(request, session=session)
+                body = response.body.decode()
+        finally:
+            session.close()
+            Base.metadata.drop_all(engine)
+            engine.dispose()
+
+        self.assertIn("Сценарий missing remote", body)
+        self.assertIn("/ops#ops-remote-not-found", body)
+
+    def test_profiles_page_falls_back_when_setup_diagnostics_fail(self):
+        engine = create_engine("sqlite:///:memory:", future=True)
+        TestingSession = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+        Base.metadata.create_all(engine)
+        session = TestingSession()
+        try:
+            request = Request(
+                {
+                    "type": "http",
+                    "http_version": "1.1",
+                    "method": "GET",
+                    "scheme": "http",
+                    "path": "/profiles",
+                    "raw_path": b"/profiles",
+                    "query_string": b"",
+                    "headers": [],
+                    "client": ("testclient", 50000),
+                    "server": ("testserver", 80),
+                }
+            )
+            with patch("app.main.collect_setup_diagnostics", side_effect=RuntimeError("boom")):
+                response = profiles_page(request, session=session)
+                body = response.body.decode()
+        finally:
+            session.close()
+            Base.metadata.drop_all(engine)
+            engine.dispose()
+
+        self.assertIn("Профили хранилищ", body)
 
     def test_setup_page_shows_synology_mount_path_hint(self):
         engine = create_engine("sqlite:///:memory:", future=True)
@@ -490,6 +583,28 @@ class MainPagesRecoveryUxTest(unittest.TestCase):
         self.assertIn("Активные запуски", body)
         self.assertIn("Идет перенос.", body)
         self.assertIn('id="toggle-active-runs"', body)
+
+    def test_runs_page_shows_empty_active_state_and_incidents_without_live_snapshot(self):
+        request = self._request("/runs")
+        failed_run = RunHistory(
+            job_id=self.job.id,
+            status="failed",
+            summary="rclone завершился с кодом 3.",
+            started_at=datetime.now(UTC),
+            finished_at=datetime.now(UTC),
+        )
+        self.session.add(failed_run)
+        self.session.commit()
+
+        with patch("app.main.job_runner.active_run_snapshots", return_value={}):
+            response = runs_page(request, session=self.session)
+        body = response.body.decode()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Сейчас live-запусков нет", body)
+        self.assertIn("Прерванные запуски", body)
+        self.assertIn("Последние ошибки и блокировки", body)
+        self.assertIn("rclone завершился с кодом 3.", body)
 
     def test_run_detail_page_shows_recovery_steps(self):
         request = self._request(f"/runs/{self.run.id}")

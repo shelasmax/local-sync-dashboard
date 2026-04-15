@@ -121,7 +121,7 @@
 
 ## Текущее состояние продукта
 
-Релизный срез на `2026-04-15`: `v1.2.1`
+Релизный срез на `2026-04-15`: `v1.3.0`
 
 ### Уже есть
 
@@ -157,6 +157,9 @@
 - operational `/runs` плюс отдельный archive `/runs/archive` с pagination, фильтрами и cleanup-очисткой локальной run history
 - явные `Скрыть` / `Показать` toggle-контролы для верхних recovery/incident-блоков на `/`, `/jobs`, `/runs` с сохранением состояния в браузере
 - блок активных run на `/runs`, собранный из live runtime snapshots, а не только из БД
+- profile diagnostics, связанные с конкретными сценариями `/ops` через helper-блоки и прямые ссылки на relevant runbook sections
+- counters на `/profiles` и более action-oriented profile helper UX
+- стабильные empty-state и более честные operational sections на `/runs`, даже когда live snapshot сейчас отсутствует
 - cloud-to-cloud предупреждения в `/setup` и при составлении маршрута на `/jobs`
 - pre-run checklist для длинных cloud job при составлении маршрута на `/jobs`
 - встроенный экран `/ops` с runbook по запуску, recovery, `launchd` и backup/restore

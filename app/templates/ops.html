@@ -7,10 +7,15 @@
       <h2>Операционный runbook</h2>
       <p class="page-lead">Короткие operational сценарии: ночной запуск, recovery, launchd и перенос на другой Mac.</p>
     </div>
+    <div class="hero-actions">
+      <a class="button secondary" href="#ops-night-runs">Cloud / Network</a>
+      <a class="button secondary" href="#ops-local-path">Path / Mount</a>
+      <a class="button secondary" href="#ops-incidents">Типовые симптомы</a>
+    </div>
   </section>
 
   <section class="dashboard-grid">
-    <article class="panel ops-card">
+    <article class="panel ops-card" id="ops-night-runs">
       <div class="panel-header">
         <div>
           <span class="section-kicker">Night Runs</span>
@@ -36,7 +41,7 @@
       </div>
     </article>
 
-    <article class="panel ops-card">
+    <article class="panel ops-card" id="ops-recovery">
       <div class="panel-header">
         <div>
           <span class="section-kicker">Recovery</span>
@@ -99,7 +104,7 @@
     </article>
   </section>
 
-  <section class="panel">
+  <section class="panel" id="ops-incidents">
     <div class="panel-header">
       <div>
         <span class="section-kicker">Incidents</span>
@@ -107,22 +112,22 @@
       </div>
     </div>
     <div class="template-list setup-template-list">
-      <article class="template-card">
+      <article class="template-card" id="ops-remote-not-found">
         <strong>`remote not found`</strong>
         <p>В `rclone` не настроен или переименован remote.</p>
         <div class="muted">Что делать: откройте `setup`, проверьте `rclone listremotes`, затем исправьте профиль.</div>
       </article>
-      <article class="template-card">
+      <article class="template-card" id="ops-cloud-auth">
         <strong>`401/403` для cloud profile</strong>
         <p>Проблема с авторизацией или правами.</p>
         <div class="muted">Что делать: переподключите remote, проверьте ключи и после этого нажмите `Проверить снова`.</div>
       </article>
-      <article class="template-card">
+      <article class="template-card" id="ops-local-path">
         <strong>Локальный путь недоступен</strong>
         <p>Папка удалена, том не смонтирован или path изменился.</p>
         <div class="muted">Что делать: переподключите том, исправьте путь в профиле и затем задачу.</div>
       </article>
-      <article class="template-card">
+      <article class="template-card" id="ops-synology-path">
         <strong>Повторяющийся `directory not found`</strong>
         <p>Часто это неверный Synology mount path или дублирование `source_path` поверх корня профиля.</p>
         <div class="muted">Что делать: откройте задачу в режиме `Исправить` и проверьте effective source route.</div>
