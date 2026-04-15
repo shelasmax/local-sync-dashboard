@@ -73,8 +73,25 @@
 - проверка, где icon-only controls достаточно понятны, а где нужен короткий текст
 - дальнейшее выравнивание copy по `/profiles`, `/jobs`, `/runs`, `/ops`
 
+### 7. Более явная диагностика mount path для Synology / SMB
+
+Почему важно:
+- ошибки вида `/home/...` vs `/Volumes/...` выглядят как сбой `rclone`, хотя корень проблемы в настройке профиля
+- пользователю нужен более короткий путь от `directory not found` к правильному mount path на macOS
+
+Что должно быть:
+- action-oriented подсказки для `synology_share` и других mount-based профилей
+- более явная связка между SMB URL из Finder и локальным путём в `/Volumes`
+- отдельные UX-сценарии для случаев, когда mount path отвалился после sleep или переподключения сети
+
 ## Уже сделано
 
+- релиз `v1.1.0`: `Control Room` с блоками `Status / Route / Next Action`
+- edit/clone flow для задач прямо из `/jobs` и `/runs`
+- browse API и быстрый выбор подпапок для формы задачи
+- показ `effective route` в форме и на детальной странице запуска
+- блокировка типовых ошибочных Synology маршрутов до запуска: `/home/...` и duplicated `source_path`
+- incident-driven UX для repeated failed runs с явными CTA `Исправить`, `Копировать как новую`, `Dry-run`, `Открыть лог`
 - принято продуктовое решение: `re-attach` к живому `rclone` процессу не поддерживается
 - `dry-run preview` для сохраненной задачи перед реальным запуском
 - recovery flow для `interrupted` задач с повтором по дельте из `/runs`, `/jobs`, карточки конкретного запуска и главной
@@ -86,12 +103,15 @@
 - удаление задач из UI и API с защитой от удаления активного job
 - list-first UX для `/profiles` и `/jobs`: основной список и раскрывающаяся форма сверху
 - единый icon-button action UX с `title` / tooltip и скрытым текстом для доступности
-- логотип в шапке на базе favicon
+- упрощенный shell: более низкий header, более компактные hero-блоки и единый ритм карточек на `/`, `/jobs`, `/runs`, `/profiles`, `/setup`, `/ops`
+- перенос operational readiness на дэшборд вместо отдельной вкладки статуса
 - встроенный экран `/ops` с базовым operational runbook
+- явные подсказки в `/profiles`, `/setup` и docs, что `Synology SMB` нужно заводить через локальный путь `/Volumes/...`, а не через `smb://...`
 - базовая чистка адаптивной верстки и cleanup тестового harness без `ResourceWarning`
 
 ## Отдельно вне MVP
 
+- optional relay / VPS worker для long-running cloud маршрутов
 - двусторонняя синхронизация
 - delete propagation
 - conflict resolution

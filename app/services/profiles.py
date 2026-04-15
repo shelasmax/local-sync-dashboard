@@ -8,9 +8,9 @@ from sqlalchemy.orm import Session
 
 from app.models import ProfileType, StorageProfile, SyncJob
 from app.schemas import ConnectionTestPayload, StorageProfilePayload
-from app.services.common import decode_json, encode_json, join_local_path, join_remote_path
+from app.services.common import decode_json, encode_json, join_local_path, join_remote_path, normalize_relative_path
 from app.services.keychain import delete_secret, store_secret
-from app.services.rclone import RcloneError, test_remote
+from app.services.rclone import RcloneError, list_directories, test_remote
 
 
 class ProfileConflictError(ValueError):
@@ -29,6 +29,16 @@ class ProfileCheckResult:
     profile_id: int
     ok: bool
     message: str
+    command_preview: str | None
+
+
+@dataclass(slots=True)
+class ProfileBrowseResult:
+    profile_id: int
+    root_path: str
+    relative_path: str
+    effective_path: str
+    entries: list[str]
     command_preview: str | None
 
 
@@ -84,6 +94,37 @@ def storage_endpoint(profile: StorageProfile, relative_path: str = "") -> str:
     if profile.profile_type in {ProfileType.LOCAL_FOLDER.value, ProfileType.SYNOLOGY_SHARE.value}:
         return join_local_path(profile.root_path_or_remote, relative_path)
     return join_remote_path(profile.root_path_or_remote, relative_path)
+
+
+def browse_profile(profile: StorageProfile, relative_path: str = "") -> ProfileBrowseResult:
+    normalized_relative = normalize_relative_path(relative_path)
+    effective_path = storage_endpoint(profile, normalized_relative)
+
+    if profile.profile_type in {ProfileType.LOCAL_FOLDER.value, ProfileType.SYNOLOGY_SHARE.value}:
+        candidate = Path(effective_path).expanduser()
+        if not candidate.exists():
+            raise RcloneError(f"Папка для выбора подпути не найдена: {candidate}")
+        if not candidate.is_dir():
+            raise RcloneError(f"Папка для выбора подпути должна быть директорией: {candidate}")
+        entries = sorted(item.name for item in candidate.iterdir() if item.is_dir())
+        return ProfileBrowseResult(
+            profile_id=profile.id,
+            root_path=profile.root_path_or_remote,
+            relative_path=normalized_relative,
+            effective_path=str(candidate),
+            entries=entries,
+            command_preview=None,
+        )
+
+    entries, command_preview = list_directories(effective_path)
+    return ProfileBrowseResult(
+        profile_id=profile.id,
+        root_path=profile.root_path_or_remote,
+        relative_path=normalized_relative,
+        effective_path=effective_path,
+        entries=entries,
+        command_preview=command_preview,
+    )
 
 
 def test_connection(payload: ConnectionTestPayload | StorageProfilePayload) -> tuple[bool, str, str | None]:

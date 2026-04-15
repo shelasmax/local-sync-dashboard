@@ -19,7 +19,7 @@ TEMPORARY_NETWORK_PATTERNS = (
 
 def join_local_path(root: str, child: str = "") -> str:
     base = Path(root).expanduser()
-    relative = child.strip().lstrip("/")
+    relative = normalize_relative_path(child)
     return str(base / relative) if relative else str(base)
 
 
@@ -32,12 +32,31 @@ def normalize_remote_root(value: str) -> str:
 
 def join_remote_path(root: str, child: str = "") -> str:
     remote_root = normalize_remote_root(root)
-    relative = child.strip().lstrip("/")
+    relative = normalize_relative_path(child)
     if not relative:
         return remote_root
     if remote_root.endswith(":"):
         return f"{remote_root}{relative}"
     return f"{remote_root.rstrip('/')}/{relative}"
+
+
+def relative_path_segments(value: str | None) -> tuple[str, ...]:
+    if not value:
+        return ()
+    normalized = value.strip().replace("\\", "/")
+    segments: list[str] = []
+    for raw_segment in normalized.split("/"):
+        segment = raw_segment.strip()
+        if not segment or segment == ".":
+            continue
+        if segment == "..":
+            raise ValueError("Подпуть не должен содержать '..'.")
+        segments.append(segment)
+    return tuple(segments)
+
+
+def normalize_relative_path(value: str | None) -> str:
+    return "/".join(relative_path_segments(value))
 
 
 def decode_json(text: str | None, fallback):
@@ -70,4 +89,3 @@ def parse_plain_stats(output: str) -> tuple[int, int]:
         files_transferred = int(transfers_match[-1])
 
     return bytes_transferred, files_transferred
-

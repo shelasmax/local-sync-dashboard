@@ -11,6 +11,7 @@ from fastapi import Depends, FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pydantic import ValidationError
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -27,6 +28,7 @@ from app.schemas import (
 )
 from app.services.common import decode_json
 from app.services.jobs import (
+    JobConflictError,
     JobDeleteError,
     RunRecoveryError,
     create_job,
@@ -35,12 +37,16 @@ from app.services.jobs import (
     job_runner,
     preview_job,
     retry_run,
+    update_job,
+    validate_job_route,
 )
 from app.services.rclone import RcloneError
 from app.services.profiles import (
+    ProfileBrowseResult,
     ProfileCheckResult,
     ProfileConflictError,
     ProfileInUseError,
+    browse_profile,
     build_s3_remote_root,
     check_profile,
     create_profile,
@@ -268,7 +274,10 @@ def suggested_profiles(diagnostics) -> list[dict[str, str]]:
 def prefill_job_payload(params: dict[str, Any] | None = None) -> dict[str, Any]:
     data = params or {}
     return {
-        "name": data.get("suggested_name", ""),
+        "form_mode": data.get("form_mode", "create"),
+        "edit_job_id": int(data["edit_job_id"]) if data.get("edit_job_id") else None,
+        "clone_job_id": int(data["clone_job_id"]) if data.get("clone_job_id") else None,
+        "name": data.get("suggested_name") or data.get("name", ""),
         "source_profile_id": int(data["source_profile_id"]) if data.get("source_profile_id") else None,
         "source_path": data.get("source_path", ""),
         "target_profile_id": int(data["target_profile_id"]) if data.get("target_profile_id") else None,
@@ -278,7 +287,169 @@ def prefill_job_payload(params: dict[str, Any] | None = None) -> dict[str, Any]:
         "filters": data.get("filters", ""),
         "enabled": str(data.get("enabled", "true")).lower() not in {"false", "0", ""},
         "verify_checksum": str(data.get("verify_checksum", "false")).lower() in {"true", "1", "on"},
+        "error_field": data.get("error_field", ""),
     }
+
+
+def build_job_form_query(
+    *,
+    error: str,
+    error_field: str = "",
+    name: str,
+    source_profile_id: int,
+    source_path: str,
+    target_profile_id: int,
+    target_path: str,
+    schedule: str,
+    bandwidth_limit: str,
+    verify_checksum: bool,
+    filters: str,
+    enabled: bool,
+    form_mode: str = "create",
+    edit_job_id: int | None = None,
+    clone_job_id: int | None = None,
+) -> str:
+    query = {
+        "error": error,
+        "error_field": error_field,
+        "form_mode": form_mode,
+        "name": name,
+        "source_profile_id": source_profile_id,
+        "source_path": source_path,
+        "target_profile_id": target_profile_id,
+        "target_path": target_path,
+        "schedule": schedule,
+        "bandwidth_limit": bandwidth_limit,
+        "verify_checksum": "true" if verify_checksum else "false",
+        "filters": filters,
+        "enabled": "true" if enabled else "false",
+    }
+    if edit_job_id is not None:
+        query["edit_job_id"] = edit_job_id
+    if clone_job_id is not None:
+        query["clone_job_id"] = clone_job_id
+    return urlencode(query)
+
+
+def build_job_prefill(job: SyncJob, *, mode: str) -> dict[str, Any]:
+    name = job.name
+    if mode == "clone":
+        name = f"{job.name} (copy)"
+    return {
+        "form_mode": mode,
+        "edit_job_id": job.id if mode == "edit" else None,
+        "clone_job_id": job.id if mode == "clone" else None,
+        "name": name,
+        "source_profile_id": job.source_profile_id,
+        "source_path": job.source_path,
+        "target_profile_id": job.target_profile_id,
+        "target_path": job.target_path,
+        "schedule": job.schedule,
+        "bandwidth_limit": job.bandwidth_limit or "",
+        "filters": "\n".join(decode_json(job.filters_json, [])),
+        "enabled": job.enabled,
+        "verify_checksum": job.verify_checksum,
+        "error_field": "",
+    }
+
+
+def job_form_context(prefill: dict[str, Any]) -> dict[str, str]:
+    mode = prefill.get("form_mode", "create")
+    if mode == "edit":
+        return {
+            "mode": "edit",
+            "title": "Редактирование задачи",
+            "note": "Вы правите существующий маршрут. Сохранение обновит расписание и следующие ручные запуски.",
+            "banner": "Исправьте маршрут и сохраните задачу перед новым запуском.",
+            "submit_label": "Сохранить изменения",
+            "submit_title": "Сохранить изменения задачи",
+        }
+    if mode == "clone":
+        return {
+            "mode": "clone",
+            "title": "Новая задача на основе текущей",
+            "note": "Используйте этот режим, чтобы быстро создать безопасную копию маршрута после ошибки или для эксперимента.",
+            "banner": "Проверьте имя, source/target и сохраните новую задачу отдельно от исходной.",
+            "submit_label": "Создать копию",
+            "submit_title": "Создать копию задачи",
+        }
+    return {
+        "mode": "create",
+        "title": "Создать задачу синхронизации",
+        "note": "Опциональный блок. Открывайте его, когда нужно добавить новый маршрут `copy`.",
+        "banner": "",
+        "submit_label": "Сохранить задачу",
+        "submit_title": "Сохранить задачу",
+    }
+
+
+def resolve_job_profiles(
+    session: Session,
+    *,
+    source_profile_id: int,
+    target_profile_id: int,
+) -> tuple[StorageProfile, StorageProfile]:
+    source_profile = session.get(StorageProfile, source_profile_id)
+    target_profile = session.get(StorageProfile, target_profile_id)
+    if not source_profile or not target_profile:
+        raise LookupError("Не найден профиль источника или назначения.")
+    return source_profile, target_profile
+
+
+def route_preview_payload(
+    source_profile: StorageProfile | None,
+    target_profile: StorageProfile | None,
+    *,
+    source_path: str = "",
+    target_path: str = "",
+) -> dict[str, Any]:
+    payload = {
+        "source_root": source_profile.root_path_or_remote if source_profile else "",
+        "source_path": source_path,
+        "source_effective": "",
+        "target_root": target_profile.root_path_or_remote if target_profile else "",
+        "target_path": target_path,
+        "target_effective": "",
+        "warnings": [],
+    }
+    if not source_profile or not target_profile:
+        return payload
+    try:
+        source_effective, target_effective = validate_job_route(
+            source_profile,
+            target_profile,
+            source_path=source_path,
+            target_path=target_path,
+        )
+        payload["source_effective"] = source_effective
+        payload["target_effective"] = target_effective
+    except RcloneError as exc:
+        payload["warnings"] = [str(exc)]
+    return payload
+
+
+def latest_problem_runs_by_job(runs: list[RunHistory]) -> dict[int, dict[str, Any]]:
+    incidents: dict[int, dict[str, Any]] = {}
+    streaks: dict[tuple[int, str], int] = {}
+    for run in runs:
+        if run.job_id is None:
+            continue
+        if run.status in {"failed", "blocked", "interrupted"}:
+            key = (run.job_id, run.summary)
+            streaks[key] = streaks.get(key, 0) + 1
+            if run.job_id not in incidents:
+                incidents[run.job_id] = {
+                    "run": run,
+                    "streak": streaks[key],
+                    "summary": run.summary,
+                }
+        elif run.job_id not in incidents:
+            incidents[run.job_id] = {
+                "run": None,
+                "streak": 0,
+                "summary": "",
+            }
+    return {job_id: item for job_id, item in incidents.items() if item["run"] is not None}
 
 
 def build_profile_prefill(
@@ -601,6 +772,7 @@ def index(request: Request, session: Session = Depends(get_session)):
     recent_runs = _list_runs(session, limit=10)
     interrupted_runs = _list_interrupted_runs(session, limit=3)
     diagnostics = collect_setup_diagnostics()
+    incidents_by_job = latest_problem_runs_by_job(_list_runs(session, limit=50))
     return templates.TemplateResponse(
         request=request,
         name="index.html",
@@ -616,6 +788,7 @@ def index(request: Request, session: Session = Depends(get_session)):
             "format_eta": format_eta,
             "interrupted_run_recovery_steps": interrupted_run_recovery_steps,
             "job_requires_manual_start_checklist": job_requires_manual_start_checklist,
+            "incidents_by_job": incidents_by_job,
         },
     )
 
@@ -830,12 +1003,26 @@ def check_profile_html(profile_id: int, session: Session = Depends(get_session))
 
 
 @app.get("/jobs", response_class=HTMLResponse)
-def jobs_page(request: Request, error: str = "", preview_job_id: int | None = None, session: Session = Depends(get_session)):
+def jobs_page(
+    request: Request,
+    error: str = "",
+    preview_job_id: int | None = None,
+    edit_job_id: int | None = None,
+    clone_job_id: int | None = None,
+    session: Session = Depends(get_session),
+):
     profiles = _list_profiles(session)
     jobs = _list_jobs(session)
+    recent_runs = _list_runs(session, limit=50)
     interrupted_runs = _list_interrupted_runs(session, limit=5)
     schedule_examples = ["manual", "hourly", "daily", "weekly", "cron:0 6 * * *"]
     prefill = prefill_job_payload(request.query_params)
+    requested_mode = "edit" if edit_job_id else "clone" if clone_job_id else "create"
+    requested_job_id = edit_job_id or clone_job_id
+    if requested_job_id and not prefill["name"] and not prefill["source_profile_id"] and not prefill["target_profile_id"]:
+        existing_job = session.get(SyncJob, requested_job_id)
+        if existing_job:
+            prefill = build_job_prefill(existing_job, mode=requested_mode)
     active_runs = job_runner.active_run_snapshots()
     preview = None
     preview_transfer_warning = ""
@@ -851,6 +1038,14 @@ def jobs_page(request: Request, error: str = "", preview_job_id: int | None = No
     target_profile = indexed_profiles.get(prefill["target_profile_id"]) if prefill["target_profile_id"] else None
     transfer_warning = job_transfer_warning(source_profile, target_profile)
     pre_run_checklist = job_pre_run_checklist(source_profile, target_profile)
+    form_context = job_form_context(prefill)
+    route_preview = route_preview_payload(
+        source_profile,
+        target_profile,
+        source_path=prefill["source_path"],
+        target_path=prefill["target_path"],
+    )
+    incidents_by_job = latest_problem_runs_by_job(recent_runs)
     if preview:
         preview_job_row = indexed_jobs.get(preview.job_id)
         if preview_job_row:
@@ -885,6 +1080,8 @@ def jobs_page(request: Request, error: str = "", preview_job_id: int | None = No
             "preview_checklist": preview_checklist,
             "interrupted_runs": interrupted_runs,
             "prefill": prefill,
+            "form_context": form_context,
+            "route_preview": route_preview,
             "transfer_warning": transfer_warning,
             "pre_run_checklist": pre_run_checklist,
             "job_transfer_warning": job_transfer_warning,
@@ -892,6 +1089,7 @@ def jobs_page(request: Request, error: str = "", preview_job_id: int | None = No
             "interrupted_run_recovery_steps": interrupted_run_recovery_steps,
             "job_requires_manual_start_checklist": job_requires_manual_start_checklist,
             "job_templates": suggested_job_templates(profiles),
+            "incidents_by_job": incidents_by_job,
         },
     )
 
@@ -910,19 +1108,184 @@ def create_job_html(
     filters: str = Form(default=""),
     session: Session = Depends(get_session),
 ):
-    payload = SyncJobPayload(
-        name=name,
-        source_profile_id=source_profile_id,
-        source_path=source_path,
-        target_profile_id=target_profile_id,
-        target_path=target_path,
-        schedule=schedule,
-        enabled=enabled,
-        bandwidth_limit=bandwidth_limit or None,
-        verify_checksum=verify_checksum,
-        filters=filters,
-    )
-    job = create_job(session, payload)
+    try:
+        payload = SyncJobPayload(
+            name=name,
+            source_profile_id=source_profile_id,
+            source_path=source_path,
+            target_profile_id=target_profile_id,
+            target_path=target_path,
+            schedule=schedule,
+            enabled=enabled,
+            bandwidth_limit=bandwidth_limit or None,
+            verify_checksum=verify_checksum,
+            filters=filters,
+        )
+        source_profile, target_profile = resolve_job_profiles(
+            session,
+            source_profile_id=source_profile_id,
+            target_profile_id=target_profile_id,
+        )
+        validate_job_route(
+            source_profile,
+            target_profile,
+            source_path=payload.source_path,
+            target_path=payload.target_path,
+        )
+        job = create_job(session, payload)
+    except ValidationError as exc:
+        first_error = exc.errors()[0]
+        message = first_error.get("msg", "Проверьте заполнение формы задачи.")
+        field = str((first_error.get("loc") or [""])[0])
+        query = build_job_form_query(
+            error=message,
+            error_field=field,
+            name=name,
+            source_profile_id=source_profile_id,
+            source_path=source_path,
+            target_profile_id=target_profile_id,
+            target_path=target_path,
+            schedule=schedule,
+            bandwidth_limit=bandwidth_limit,
+            verify_checksum=verify_checksum,
+            filters=filters,
+            enabled=enabled,
+        )
+        return RedirectResponse(url=f"/jobs?{query}", status_code=303)
+    except (LookupError, RcloneError) as exc:
+        query = build_job_form_query(
+            error=str(exc),
+            error_field="source_path",
+            name=name,
+            source_profile_id=source_profile_id,
+            source_path=source_path,
+            target_profile_id=target_profile_id,
+            target_path=target_path,
+            schedule=schedule,
+            bandwidth_limit=bandwidth_limit,
+            verify_checksum=verify_checksum,
+            filters=filters,
+            enabled=enabled,
+        )
+        return RedirectResponse(url=f"/jobs?{query}", status_code=303)
+    except JobConflictError as exc:
+        query = build_job_form_query(
+            error=str(exc),
+            error_field="name",
+            name=name,
+            source_profile_id=source_profile_id,
+            source_path=source_path,
+            target_profile_id=target_profile_id,
+            target_path=target_path,
+            schedule=schedule,
+            bandwidth_limit=bandwidth_limit,
+            verify_checksum=verify_checksum,
+            filters=filters,
+            enabled=enabled,
+        )
+        return RedirectResponse(url=f"/jobs?{query}", status_code=303)
+    job_runner.sync_job(job.id)
+    return RedirectResponse(url="/jobs", status_code=303)
+
+
+@app.post("/jobs/{job_id}/update")
+def update_job_html(
+    job_id: int,
+    name: str = Form(...),
+    source_profile_id: int = Form(...),
+    source_path: str = Form(default=""),
+    target_profile_id: int = Form(...),
+    target_path: str = Form(default=""),
+    schedule: str = Form(default="manual"),
+    enabled: bool = Form(default=False),
+    bandwidth_limit: str = Form(default=""),
+    verify_checksum: bool = Form(default=False),
+    filters: str = Form(default=""),
+    session: Session = Depends(get_session),
+):
+    try:
+        payload = SyncJobPayload(
+            name=name,
+            source_profile_id=source_profile_id,
+            source_path=source_path,
+            target_profile_id=target_profile_id,
+            target_path=target_path,
+            schedule=schedule,
+            enabled=enabled,
+            bandwidth_limit=bandwidth_limit or None,
+            verify_checksum=verify_checksum,
+            filters=filters,
+        )
+        source_profile, target_profile = resolve_job_profiles(
+            session,
+            source_profile_id=source_profile_id,
+            target_profile_id=target_profile_id,
+        )
+        validate_job_route(
+            source_profile,
+            target_profile,
+            source_path=payload.source_path,
+            target_path=payload.target_path,
+        )
+        job = update_job(session, job_id, payload)
+    except ValidationError as exc:
+        first_error = exc.errors()[0]
+        message = first_error.get("msg", "Проверьте заполнение формы задачи.")
+        field = str((first_error.get("loc") or [""])[0])
+        query = build_job_form_query(
+            error=message,
+            error_field=field,
+            name=name,
+            source_profile_id=source_profile_id,
+            source_path=source_path,
+            target_profile_id=target_profile_id,
+            target_path=target_path,
+            schedule=schedule,
+            bandwidth_limit=bandwidth_limit,
+            verify_checksum=verify_checksum,
+            filters=filters,
+            enabled=enabled,
+            form_mode="edit",
+            edit_job_id=job_id,
+        )
+        return RedirectResponse(url=f"/jobs?{query}", status_code=303)
+    except (LookupError, RcloneError) as exc:
+        query = build_job_form_query(
+            error=str(exc),
+            error_field="source_path",
+            name=name,
+            source_profile_id=source_profile_id,
+            source_path=source_path,
+            target_profile_id=target_profile_id,
+            target_path=target_path,
+            schedule=schedule,
+            bandwidth_limit=bandwidth_limit,
+            verify_checksum=verify_checksum,
+            filters=filters,
+            enabled=enabled,
+            form_mode="edit",
+            edit_job_id=job_id,
+        )
+        return RedirectResponse(url=f"/jobs?{query}", status_code=303)
+    except JobConflictError as exc:
+        query = build_job_form_query(
+            error=str(exc),
+            error_field="name",
+            name=name,
+            source_profile_id=source_profile_id,
+            source_path=source_path,
+            target_profile_id=target_profile_id,
+            target_path=target_path,
+            schedule=schedule,
+            bandwidth_limit=bandwidth_limit,
+            verify_checksum=verify_checksum,
+            filters=filters,
+            enabled=enabled,
+            form_mode="edit",
+            edit_job_id=job_id,
+        )
+        return RedirectResponse(url=f"/jobs?{query}", status_code=303)
+
     job_runner.sync_job(job.id)
     return RedirectResponse(url="/jobs", status_code=303)
 
@@ -1016,6 +1379,7 @@ def runs_page(request: Request, error: str = "", session: Session = Depends(get_
     runs = _list_runs(session)
     active_runs = job_runner.active_run_snapshots()
     interrupted_runs = _list_interrupted_runs(session, limit=5)
+    incidents_by_job = latest_problem_runs_by_job(runs)
     return templates.TemplateResponse(
         request=request,
         name="runs.html",
@@ -1033,6 +1397,7 @@ def runs_page(request: Request, error: str = "", session: Session = Depends(get_
             "interrupted_run_recovery_steps": interrupted_run_recovery_steps,
             "job_requires_manual_start_checklist": job_requires_manual_start_checklist,
             "error": error,
+            "incidents_by_job": incidents_by_job,
         },
     )
 
@@ -1044,6 +1409,12 @@ def run_detail_page(run_id: int, request: Request, session: Session = Depends(ge
         raise HTTPException(status_code=404, detail="Запуск не найден.")
     active_runs = job_runner.active_run_snapshots()
     active_run = active_runs.get(run.job_id) if run.job_id else None
+    route_preview = route_preview_payload(
+        run.job.source_profile if run.job else None,
+        run.job.target_profile if run.job else None,
+        source_path=run.job.source_path if run.job else "",
+        target_path=run.job.target_path if run.job else "",
+    )
     return templates.TemplateResponse(
         request=request,
         name="run_detail.html",
@@ -1061,6 +1432,7 @@ def run_detail_page(run_id: int, request: Request, session: Session = Depends(ge
                 run.job.source_profile if run.job else None,
                 run.job.target_profile if run.job else None,
             ),
+            "route_preview": route_preview,
         },
     )
 
@@ -1121,6 +1493,25 @@ def api_list_profiles(session: Session = Depends(get_session)):
     return _list_profiles(session)
 
 
+@app.get("/api/storage-profiles/{profile_id}/browse")
+def api_browse_profile(profile_id: int, relative_path: str = "", session: Session = Depends(get_session)):
+    profile = session.get(StorageProfile, profile_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Профиль не найден.")
+    try:
+        result: ProfileBrowseResult = browse_profile(profile, relative_path=relative_path)
+    except RcloneError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {
+        "profile_id": result.profile_id,
+        "root_path": result.root_path,
+        "relative_path": result.relative_path,
+        "effective_path": result.effective_path,
+        "entries": result.entries,
+        "command_preview": result.command_preview,
+    }
+
+
 @app.post("/api/storage-profiles/{profile_id}/check")
 def api_check_profile(profile_id: int, session: Session = Depends(get_session)):
     try:
@@ -1137,7 +1528,50 @@ def api_check_profile(profile_id: int, session: Session = Depends(get_session)):
 
 @app.post("/api/jobs", response_model=SyncJobRead)
 def api_create_job(payload: SyncJobPayload, session: Session = Depends(get_session)):
-    job = create_job(session, payload)
+    try:
+        source_profile, target_profile = resolve_job_profiles(
+            session,
+            source_profile_id=payload.source_profile_id,
+            target_profile_id=payload.target_profile_id,
+        )
+        validate_job_route(
+            source_profile,
+            target_profile,
+            source_path=payload.source_path,
+            target_path=payload.target_path,
+        )
+        job = create_job(session, payload)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RcloneError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except JobConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    job_runner.sync_job(job.id)
+    return job
+
+
+@app.put("/api/jobs/{job_id}", response_model=SyncJobRead)
+def api_update_job(job_id: int, payload: SyncJobPayload, session: Session = Depends(get_session)):
+    try:
+        source_profile, target_profile = resolve_job_profiles(
+            session,
+            source_profile_id=payload.source_profile_id,
+            target_profile_id=payload.target_profile_id,
+        )
+        validate_job_route(
+            source_profile,
+            target_profile,
+            source_path=payload.source_path,
+            target_path=payload.target_path,
+        )
+        job = update_job(session, job_id, payload)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RcloneError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except JobConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     job_runner.sync_job(job.id)
     return job
 

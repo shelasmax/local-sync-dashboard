@@ -13,9 +13,9 @@ from sqlalchemy import delete, func, select
 
 from app.config import settings
 from app.database import SessionLocal
-from app.models import AppSettings, RunHistory, RunStatus, StorageProfile, SyncJob
+from app.models import AppSettings, ProfileType, RunHistory, RunStatus, StorageProfile, SyncJob
 from app.schemas import SyncJobPayload
-from app.services.common import decode_json, encode_json, is_temporary_network_error
+from app.services.common import decode_json, encode_json, is_temporary_network_error, relative_path_segments
 from app.services.profiles import storage_endpoint
 from app.services.rclone import (
     RcloneError,
@@ -27,6 +27,7 @@ from app.services.rclone import (
     execute,
     execute_with_progress,
     is_available,
+    summarize_rclone_error,
 )
 from app.services.scheduling import build_trigger
 
@@ -48,6 +49,10 @@ def init_settings(session) -> AppSettings:
 
 
 def create_job(session, payload: SyncJobPayload) -> SyncJob:
+    existing = session.scalar(select(SyncJob).where(SyncJob.name == payload.name))
+    if existing:
+        raise JobConflictError(f"Задача с именем «{payload.name}» уже существует.")
+
     job = SyncJob(
         name=payload.name,
         source_profile_id=payload.source_profile_id,
@@ -67,7 +72,41 @@ def create_job(session, payload: SyncJobPayload) -> SyncJob:
     return job
 
 
+def update_job(session, job_id: int, payload: SyncJobPayload) -> SyncJob:
+    job = session.get(SyncJob, job_id)
+    if not job:
+        raise LookupError("Задача не найдена.")
+
+    existing = session.scalar(
+        select(SyncJob).where(
+            SyncJob.name == payload.name,
+            SyncJob.id != job_id,
+        )
+    )
+    if existing:
+        raise JobConflictError(f"Задача с именем «{payload.name}» уже существует.")
+
+    job.name = payload.name
+    job.source_profile_id = payload.source_profile_id
+    job.source_path = payload.source_path
+    job.target_profile_id = payload.target_profile_id
+    job.target_path = payload.target_path
+    job.schedule = payload.schedule
+    job.enabled = payload.enabled
+    job.mode = payload.mode
+    job.filters_json = encode_json(payload.filters)
+    job.bandwidth_limit = payload.bandwidth_limit
+    job.verify_checksum = payload.verify_checksum
+    session.commit()
+    session.refresh(job)
+    return job
+
+
 class JobDeleteError(RuntimeError):
+    pass
+
+
+class JobConflictError(ValueError):
     pass
 
 
@@ -86,6 +125,144 @@ class JobPreview:
 
 class RunRecoveryError(RuntimeError):
     pass
+
+
+LOCAL_PROFILE_TYPES = {
+    ProfileType.LOCAL_FOLDER.value,
+    ProfileType.SYNOLOGY_SHARE.value,
+}
+
+
+def _display_relative_path(value: str) -> str:
+    return value or "."
+
+
+def _validate_synology_root(profile: StorageProfile) -> None:
+    root = Path(profile.root_path_or_remote).expanduser()
+    if root.parts[:1] != ("/",) or len(root.parts) < 2 or root.parts[1] != "Volumes":
+        raise RcloneError(
+            "Для Synology profile нужен уже смонтированный путь macOS из `/Volumes`, "
+            f"а не `{profile.root_path_or_remote}`. Исправьте профиль-источник или профиль-назначение."
+        )
+
+
+def _validate_local_endpoint(
+    profile: StorageProfile,
+    *,
+    relative_path: str,
+    role: str,
+    require_final_directory: bool,
+) -> None:
+    root = Path(profile.root_path_or_remote).expanduser()
+    root_name = root.name.casefold()
+
+    if profile.profile_type == ProfileType.SYNOLOGY_SHARE.value:
+        _validate_synology_root(profile)
+
+    try:
+        segments = relative_path_segments(relative_path)
+    except ValueError as exc:
+        field = "source path" if role == "source" else "target path"
+        raise RcloneError(f"Некорректный {field}: {exc}") from exc
+
+    if segments and root_name and segments[0].casefold() == root_name:
+        profile_role = "источника" if role == "source" else "назначения"
+        field = "source_path" if role == "source" else "target_path"
+        raise RcloneError(
+            "Подпуть дублирует последнюю папку корня профиля. "
+            f"У профиля {profile_role} уже выбран путь `{profile.root_path_or_remote}`. "
+            f"Для этого случая оставьте `{field}` пустым. "
+            "Если нужна папка уровнем выше, сначала измените корень профиля."
+        )
+
+    if not root.exists():
+        role_label = "источник" if role == "source" else "назначение"
+        prefix = "Локальный" if role == "source" else "Локальное"
+        status_word = "недоступен" if role == "source" else "недоступно"
+        raise RcloneError(
+            f"{prefix} {role_label} {status_word}: корень профиля не найден: {root}. "
+            "Проверьте profile root и что том смонтирован на этом Mac."
+        )
+    if not root.is_dir():
+        role_label = "источник" if role == "source" else "назначение"
+        prefix = "Локальный" if role == "source" else "Локальное"
+        raise RcloneError(f"{prefix} {role_label} должно быть директорией: {root}")
+
+    if not require_final_directory:
+        return
+
+    candidate = Path(storage_endpoint(profile, relative_path)).expanduser()
+    if not candidate.exists():
+        field = "source path" if role == "source" else "target path"
+        if relative_path:
+            raise RcloneError(
+                f"Подпапка не найдена: `{_display_relative_path(relative_path)}`. "
+                f"Проверьте {field} и корень профиля `{profile.root_path_or_remote}`."
+            )
+        raise RcloneError(
+            f"Локальный путь не найден: {candidate}. "
+            "Проверьте корень профиля и mount path на этом Mac."
+        )
+    if not candidate.is_dir():
+        role_label = "источник" if role == "source" else "назначение"
+        raise RcloneError(f"Локальное {role_label} должно быть директорией: {candidate}")
+
+
+def validate_job_route(
+    source_profile: StorageProfile,
+    target_profile: StorageProfile,
+    *,
+    source_path: str = "",
+    target_path: str = "",
+) -> tuple[str, str]:
+    if source_profile.profile_type in LOCAL_PROFILE_TYPES:
+        _validate_local_endpoint(
+            source_profile,
+            relative_path=source_path,
+            role="source",
+            require_final_directory=False,
+        )
+    if target_profile.profile_type in LOCAL_PROFILE_TYPES:
+        _validate_local_endpoint(
+            target_profile,
+            relative_path=target_path,
+            role="target",
+            require_final_directory=False,
+        )
+    return storage_endpoint(source_profile, source_path), storage_endpoint(target_profile, target_path)
+
+
+def validate_job_endpoints(
+    source_profile: StorageProfile,
+    target_profile: StorageProfile,
+    *,
+    source_path: str = "",
+    target_path: str = "",
+) -> tuple[str, str]:
+    source, target = validate_job_route(
+        source_profile,
+        target_profile,
+        source_path=source_path,
+        target_path=target_path,
+    )
+
+    if source_profile.profile_type in LOCAL_PROFILE_TYPES:
+        _validate_local_endpoint(
+            source_profile,
+            relative_path=source_path,
+            role="source",
+            require_final_directory=True,
+        )
+
+    if target_profile.profile_type in LOCAL_PROFILE_TYPES:
+        _validate_local_endpoint(
+            target_profile,
+            relative_path=target_path,
+            role="target",
+            require_final_directory=False,
+        )
+
+    return source, target
 
 
 def delete_job(session, job_id: int, runner: "JobRunner") -> None:
@@ -127,8 +304,12 @@ def preview_job(session, job_id: int, timeout_seconds: int = 60) -> JobPreview:
     if not source_profile or not target_profile:
         raise LookupError("Не найден профиль источника или назначения.")
 
-    source = storage_endpoint(source_profile, job.source_path)
-    target = storage_endpoint(target_profile, job.target_path)
+    source, target = validate_job_endpoints(
+        source_profile,
+        target_profile,
+        source_path=job.source_path,
+        target_path=job.target_path,
+    )
     filters = decode_json(job.filters_json, [])
     size_result: RcloneSizeResult = estimate_size(source, filters=filters, timeout_seconds=timeout_seconds)
     dry_run_command = build_copy_command(
@@ -317,8 +498,16 @@ class JobRunner:
                     self._create_blocked_run(job_id, "Не найден профиль источника или назначения.")
                     return
 
-                source = storage_endpoint(source_profile, job.source_path)
-                target = storage_endpoint(target_profile, job.target_path)
+                try:
+                    source, target = validate_job_endpoints(
+                        source_profile,
+                        target_profile,
+                        source_path=job.source_path,
+                        target_path=job.target_path,
+                    )
+                except RcloneError as exc:
+                    self._create_blocked_run(job_id, str(exc))
+                    return
                 filters = decode_json(job.filters_json, [])
                 command = build_copy_command(
                     source=source,
@@ -398,7 +587,7 @@ class JobRunner:
                     )
                 else:
                     run.status = RunStatus.FAILED.value
-                    run.summary = f"rclone завершился с кодом {result.returncode}."
+                    run.summary = summarize_rclone_error(combined, returncode=result.returncode)
                 session.commit()
                 self._finalize_snapshot(job_id, run.status, run.summary, result.bytes_transferred, result.files_transferred)
         finally:

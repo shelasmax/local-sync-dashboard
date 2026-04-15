@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Локальная панель синхронизации</title>
+    <title>Local Sync Dashboard v1.1</title>
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/static/style.css" />
   </head>
@@ -53,24 +53,29 @@
         <path d="M5 5h14v14H5zM9 5v14M15 5v14M5 9h14M5 15h14" fill="none" stroke="currentColor" stroke-width="1.5"/>
       </symbol>
     </svg>
+
     <header class="shell-header">
-      <div class="brand-block">
-        <p class="eyebrow">Локальный сервис для macOS</p>
-        <div class="brand-title">
-          <img class="brand-logo" src="/static/favicon.svg" alt="" />
-          <h1>Локальная панель синхронизации</h1>
+      <div class="brand-shell">
+        <div class="brand-copy">
+          <div class="brand-title">
+            <img class="brand-logo" src="/static/favicon.svg" alt="" />
+            <div>
+              <h1>Local Sync Control Room</h1>
+              <p class="brand-subtitle">Локальный `rclone copy` пульт для macOS.</p>
+            </div>
+          </div>
         </div>
       </div>
-      <nav>
+      <nav class="top-nav">
         <a href="/">Обзор</a>
-        <a href="/setup">Подготовка</a>
-        <a href="/profiles">Профили</a>
         <a href="/jobs">Задачи</a>
         <a href="/runs">Запуски</a>
+        <a href="/profiles">Профили</a>
+        <a href="/setup">Подготовка</a>
         <a href="/ops">Ops / Runbook</a>
-        <a href="/health">Статус</a>
       </nav>
     </header>
+
     <main class="layout">
       {% block content %}{% endblock %}
     </main>

@@ -1,17 +1,33 @@
 from __future__ import annotations
 
+import os
+import tempfile
 import unittest
+from pathlib import Path
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.database import Base
 from app.models import ProfileType, StorageProfile, SyncJob
+from app.schemas import SyncJobPayload
 from app.services.common import encode_json
 from unittest.mock import patch
 
 from app.models import RunHistory, RunStatus
-from app.services.jobs import JobDeleteError, RunRecoveryError, RunSnapshot, delete_job, preview_job, retry_run
+from app.services.jobs import (
+    JobConflictError,
+    JobDeleteError,
+    JobRunner,
+    RunRecoveryError,
+    RunSnapshot,
+    delete_job,
+    preview_job,
+    retry_run,
+    validate_job_route,
+    validate_job_endpoints,
+)
+from app.services.rclone import RcloneResult
 
 
 class DummyRunner:
@@ -25,6 +41,11 @@ class DummyRunner:
 
 class JobsServiceTest(unittest.TestCase):
     def setUp(self):
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.source_root = f"{self.tempdir.name}/source"
+        self.target_root = f"{self.tempdir.name}/target"
+        os.makedirs(self.source_root, exist_ok=True)
+        os.makedirs(self.target_root, exist_ok=True)
         self.engine = create_engine("sqlite:///:memory:", future=True)
         TestingSession = sessionmaker(bind=self.engine, autoflush=False, autocommit=False, expire_on_commit=False)
         Base.metadata.create_all(self.engine)
@@ -34,7 +55,7 @@ class JobsServiceTest(unittest.TestCase):
         source = StorageProfile(
             name="Source",
             profile_type=ProfileType.LOCAL_FOLDER.value,
-            root_path_or_remote="/tmp/source",
+            root_path_or_remote=self.source_root,
             status="ready",
             options_json=encode_json({}),
         )
@@ -56,6 +77,7 @@ class JobsServiceTest(unittest.TestCase):
         self.session.close()
         Base.metadata.drop_all(self.engine)
         self.engine.dispose()
+        self.tempdir.cleanup()
 
     def _create_job(self) -> SyncJob:
         job = SyncJob(
@@ -92,6 +114,26 @@ class JobsServiceTest(unittest.TestCase):
 
         self.assertIsNotNone(self.session.get(SyncJob, job.id))
 
+    def test_create_job_rejects_duplicate_name(self):
+        self._create_job()
+
+        duplicate = SyncJobPayload(
+            name="Source -> Target",
+            source_profile_id=self.source.id,
+            target_profile_id=self.target.id,
+            source_path="nested",
+            target_path="nested",
+            schedule="manual",
+            enabled=True,
+            mode="copy",
+            filters=[],
+            verify_checksum=False,
+        )
+
+        with self.assertRaises(JobConflictError):
+            from app.services.jobs import create_job
+            create_job(self.session, duplicate)
+
     def test_preview_job_builds_dry_run_summary(self):
         job = self._create_job()
 
@@ -117,6 +159,94 @@ class JobsServiceTest(unittest.TestCase):
         self.assertEqual(preview.source_files, 12)
         self.assertEqual(preview.source_bytes, 4096)
         self.assertIn("--dry-run", preview.command_preview)
+
+    def test_preview_job_rejects_missing_local_source_before_rclone(self):
+        job = self._create_job()
+        self.source.root_path_or_remote = "/definitely-missing-source"
+        self.session.commit()
+
+        with (
+            patch("app.services.jobs.estimate_size") as estimate_size_mock,
+            patch("app.services.jobs.execute") as execute_mock,
+        ):
+            with self.assertRaisesRegex(Exception, "Локальный источник недоступен"):
+                preview_job(self.session, job.id)
+
+        estimate_size_mock.assert_not_called()
+        execute_mock.assert_not_called()
+
+    def test_validate_job_endpoints_rejects_missing_local_target_root(self):
+        local_target = StorageProfile(
+            name="Local Target",
+            profile_type=ProfileType.LOCAL_FOLDER.value,
+            root_path_or_remote="/definitely-missing-target",
+            status="ready",
+            options_json=encode_json({}),
+        )
+        self.session.add(local_target)
+        self.session.commit()
+        self.session.refresh(local_target)
+
+        with self.assertRaisesRegex(Exception, "Локальное назначение недоступно"):
+            validate_job_endpoints(self.source, local_target)
+
+    def test_validate_job_route_rejects_duplicated_synology_segment(self):
+        source = StorageProfile(
+            name="Synology",
+            profile_type=ProfileType.SYNOLOGY_SHARE.value,
+            root_path_or_remote="/Volumes/home/Ext_HDD",
+            status="ready",
+            options_json=encode_json({}),
+        )
+
+        with self.assertRaisesRegex(Exception, "дублирует последнюю папку"):
+            validate_job_route(source, self.target, source_path="Ext_HDD")
+
+    def test_validate_job_route_rejects_synology_path_outside_volumes(self):
+        source = StorageProfile(
+            name="Synology",
+            profile_type=ProfileType.SYNOLOGY_SHARE.value,
+            root_path_or_remote="/home/Ext_HDD",
+            status="ready",
+            options_json=encode_json({}),
+        )
+
+        with self.assertRaisesRegex(Exception, "нужен уже смонтированный путь macOS из `/Volumes`"):
+            validate_job_route(source, self.target, source_path="")
+
+    def test_validate_job_route_accepts_synology_share_root_plus_subfolder(self):
+        source = StorageProfile(
+            name="Synology",
+            profile_type=ProfileType.SYNOLOGY_SHARE.value,
+            root_path_or_remote="/Volumes/home",
+            status="ready",
+            options_json=encode_json({}),
+        )
+
+        with (
+            patch.object(Path, "exists", return_value=True),
+            patch.object(Path, "is_dir", return_value=True),
+        ):
+            source_path, _ = validate_job_route(source, self.target, source_path="Ext_HDD")
+
+        self.assertEqual(source_path, "/Volumes/home/Ext_HDD")
+
+    def test_validate_job_route_accepts_synology_leaf_root_without_subfolder(self):
+        source = StorageProfile(
+            name="Synology",
+            profile_type=ProfileType.SYNOLOGY_SHARE.value,
+            root_path_or_remote="/Volumes/home/Ext_HDD",
+            status="ready",
+            options_json=encode_json({}),
+        )
+
+        with (
+            patch.object(Path, "exists", return_value=True),
+            patch.object(Path, "is_dir", return_value=True),
+        ):
+            source_path, _ = validate_job_route(source, self.target, source_path="")
+
+        self.assertEqual(source_path, "/Volumes/home/Ext_HDD")
 
     def test_retry_run_restarts_interrupted_job(self):
         job = self._create_job()
@@ -149,6 +279,33 @@ class JobsServiceTest(unittest.TestCase):
 
         with self.assertRaises(RunRecoveryError):
             retry_run(self.session, run.id, self.runner)
+
+    def test_execute_job_uses_human_readable_summary_for_missing_directory(self):
+        job = self._create_job()
+        runner = JobRunner()
+
+        result = RcloneResult(
+            returncode=3,
+            stdout="",
+            stderr='{"level":"error","msg":"error reading source root directory: directory not found"}\n'
+            '{"level":"notice","msg":"Failed to copy: directory not found"}\n',
+            command_preview="rclone copy /tmp/source yadisk:",
+        )
+
+        import app.services.jobs as jobs_module
+
+        original_session_local = jobs_module.SessionLocal
+        try:
+            jobs_module.SessionLocal = lambda: self.session
+            with patch("app.services.jobs.execute_with_progress", return_value=result):
+                runner._execute_job(job.id, "manual", jobs_module.Event())
+        finally:
+            jobs_module.SessionLocal = original_session_local
+
+        runs = self.session.query(RunHistory).filter(RunHistory.job_id == job.id).all()
+        latest = runs[-1]
+        self.assertEqual(latest.status, RunStatus.FAILED.value)
+        self.assertIn("Источник или подпапка не найдены", latest.summary)
 
 
 if __name__ == "__main__":

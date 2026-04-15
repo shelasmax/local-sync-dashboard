@@ -9,220 +9,135 @@
     </script>
   {% endif %}
 
+  <section class="page-hero compact-hero">
+    <div>
+      <p class="eyebrow">Control Room</p>
+      <h2>Задачи и маршруты</h2>
+      <p class="page-lead">Сначала исправить маршрут, затем dry-run, потом новый `copy`.</p>
+    </div>
+    <div class="hero-actions">
+      <a class="button secondary" href="/runs">Открыть историю запусков</a>
+      <a class="button secondary" href="/setup">Проверить setup</a>
+    </div>
+  </section>
+
   {% if interrupted_runs %}
-    <section class="card">
-      <div class="section-header">
-        <h2>Нужно восстановить</h2>
-        <a class="button secondary icon-button" href="/runs" title="История запусков" aria-label="История запусков">
-          <svg class="button-icon" aria-hidden="true"><use href="#icon-history"></use></svg>
-          <span class="sr-only">История запусков</span>
-        </a>
+    <section class="panel stack-panel">
+      <div class="panel-header">
+        <div>
+          <span class="section-kicker">Status</span>
+          <h3>Нуждаются в восстановлении</h3>
+        </div>
+        <a class="button secondary" href="/runs">Все recovery-сценарии</a>
       </div>
-      <div class="stack">
+      <div class="incident-list">
         {% for run in interrupted_runs %}
-          <div class="callout callout-warn">
-            <strong>{{ run.job.name if run.job else ("Задача #" ~ run.job_id) }}</strong>
-            <p>{{ run.summary }}</p>
-            <ul class="plain-list compact-list">
+          <article class="incident-panel incident-warn">
+            <div class="incident-main">
+              <span class="status-dot status-interrupted"></span>
+              <div>
+                <strong>{{ run.job.name if run.job else ("Задача #" ~ run.job_id) }}</strong>
+                <p>{{ run.summary }}</p>
+              </div>
+            </div>
+            <ul class="plain-list compact-list incident-list-items">
               {% for item in interrupted_run_recovery_steps(run)[:2] %}
                 <li>{{ item }}</li>
               {% endfor %}
             </ul>
-            <div class="actions">
-              <a class="button secondary small icon-button" href="/runs/{{ run.id }}" title="Детали запуска" aria-label="Детали запуска">
-                <svg class="button-icon" aria-hidden="true"><use href="#icon-eye"></use></svg>
-                <span class="sr-only">Детали</span>
-              </a>
+            <div class="action-row">
+              <a class="button" href="/runs/{{ run.id }}">Открыть запуск</a>
               {% if run.job %}
                 <form method="post" action="/runs/{{ run.id }}/retry">
-                  <button class="button secondary small icon-button" type="submit" title="Повторить с дельты" aria-label="Повторить с дельты">
-                    <svg class="button-icon" aria-hidden="true"><use href="#icon-repeat"></use></svg>
-                    <span class="sr-only">Повторить с дельты</span>
-                  </button>
+                  <button class="button secondary" type="submit">Повторить с дельты</button>
                 </form>
+                <a class="button secondary" href="/jobs?edit_job_id={{ run.job.id }}">Исправить маршрут</a>
               {% endif %}
             </div>
-          </div>
+          </article>
         {% endfor %}
       </div>
     </section>
   {% endif %}
 
-  <section class="stack">
-    <details class="card expand-card" {% if error or not jobs %}open{% endif %}>
-      <summary class="expand-summary">
-        <div class="expand-summary-main">
-          <span class="entity-label">Форма задачи</span>
-          <strong class="expand-summary-title">Создать задачу синхронизации</strong>
+  <section class="jobs-shell">
+    <article class="panel">
+      <div class="panel-header">
+        <div>
+          <span class="section-kicker">Status</span>
+          <h3>Операционная лента задач</h3>
         </div>
-        <span class="expand-summary-note">Опциональный блок. Открывайте его, когда нужно добавить новый маршрут `copy`.</span>
-      </summary>
-      <div class="expand-content stack">
-        {% if error %}
-          <p class="empty-state">{{ error }}</p>
-        {% endif %}
-        {% if transfer_warning %}
-          <div class="callout callout-info">
-            <strong>Как пойдет трафик</strong>
-            <p>{{ transfer_warning }}</p>
-          </div>
-        {% endif %}
-        {% if pre_run_checklist %}
-          <div class="callout callout-info">
-            <strong>Перед длинным запуском проверьте</strong>
-            <ul class="plain-list">
-              {% for item in pre_run_checklist %}
-                <li>{{ item }}</li>
-              {% endfor %}
-            </ul>
-          </div>
-        {% endif %}
-        <form method="post" action="/jobs" class="stack">
-          <label>
-            <span>Название</span>
-            <input name="name" required placeholder="Фото с Synology на Яндекс Диск" value="{{ prefill.name }}" />
-          </label>
-
-          <label>
-            <span>Профиль-источник</span>
-            <select name="source_profile_id">
-              {% for profile in profiles %}
-                <option value="{{ profile.id }}" {% if prefill.source_profile_id == profile.id %}selected{% endif %}>{{ profile.name }} ({{ profile_type_label(profile.profile_type) }})</option>
-              {% endfor %}
-            </select>
-          </label>
-
-          <label>
-            <span>Подпапка в источнике</span>
-            <input name="source_path" placeholder="необязательно/подкаталог" value="{{ prefill.source_path }}" />
-          </label>
-
-          <label>
-            <span>Профиль-назначение</span>
-            <select name="target_profile_id">
-              {% for profile in profiles %}
-                <option value="{{ profile.id }}" {% if prefill.target_profile_id == profile.id %}selected{% endif %}>{{ profile.name }} ({{ profile_type_label(profile.profile_type) }})</option>
-              {% endfor %}
-            </select>
-          </label>
-
-          <label>
-            <span>Подпапка в назначении</span>
-            <input name="target_path" placeholder="backup/2026" value="{{ prefill.target_path }}" />
-          </label>
-
-          <label>
-            <span>Расписание</span>
-            <input name="schedule" value="{{ prefill.schedule }}" placeholder="manual, hourly, daily, weekly или cron:0 6 * * *" />
-          </label>
-
-          <label>
-            <span>Ограничение скорости</span>
-            <input name="bandwidth_limit" placeholder="необязательно, например 8M" value="{{ prefill.bandwidth_limit }}" />
-          </label>
-
-          <label>
-            <span>Фильтры</span>
-            <textarea name="filters" rows="5" placeholder="- *.tmp&#10;+ *.jpg&#10;- *">{{ prefill.filters }}</textarea>
-          </label>
-
-          <label class="checkbox">
-            <input type="checkbox" name="enabled" {% if prefill.enabled %}checked{% endif %} />
-            <span>Включить запуск по расписанию</span>
-          </label>
-
-          <label class="checkbox">
-            <input type="checkbox" name="verify_checksum" {% if prefill.verify_checksum %}checked{% endif %} />
-            <span>Проверять контрольные суммы</span>
-          </label>
-
-          <button class="button icon-button" type="submit" title="Сохранить задачу" aria-label="Сохранить задачу">
-            <svg class="button-icon" aria-hidden="true"><use href="#icon-save"></use></svg>
-            <span class="sr-only">Сохранить задачу</span>
-          </button>
-        </form>
-        <p class="note">Примеры расписаний: {{ schedule_examples | join(", ") }}</p>
+        <span class="panel-note">Список остается главным экраном: сначала проблема и действие, потом редактирование маршрута.</span>
       </div>
-    </details>
 
-    <article class="card">
-      <div class="section-header">
-        <h2>Задачи синхронизации</h2>
-        <span class="note">Маршрут, режим и действия читаются в одной плоскости, а создание новой задачи не давит на список.</span>
-      </div>
       {% if jobs %}
-        <div class="entity-list">
+        <div class="control-list">
           {% for job in jobs %}
             {% set live = active_runs.get(job.id) %}
             {% set route_warning = job_transfer_warning(job.source_profile, job.target_profile) %}
             {% set run_checklist = job_pre_run_checklist(job.source_profile, job.target_profile) %}
             {% set needs_manual_start_checklist = job_requires_manual_start_checklist(job) %}
-            <article class="entity-card job-card">
-              <div class="entity-row job-row">
-                <section class="entity-section entity-title-block">
-                  <span class="entity-label">Задача</span>
-                  <strong>{{ job.name }}</strong>
-                  <div class="muted">{{ "включена" if job.enabled else "на паузе" }}</div>
-                  {% if live %}
-                    <div class="live-status">
-                      <span class="badge badge-running">выполняется</span>
-                      <div class="live-meta">
-                        <span>{{ format_bytes(live.bytes_transferred) }} из {{ format_bytes(live.total_bytes) }}</span>
-                        <span>{{ live.progress_percent }}%</span>
-                        <span>{{ format_speed(live.speed) }}</span>
-                        <span>{{ format_eta(live.eta_seconds) }}</span>
-                      </div>
-                      <div class="progress-bar" aria-label="Прогресс задачи">
-                        <span style="width: {{ live.progress_percent }}%;"></span>
-                      </div>
-                      <div class="live-meta">
-                        <span>Файлы: {{ live.files_transferred }} / {{ live.total_files }}</span>
-                        <span>Проверки: {{ live.checks }} / {{ live.total_checks }}</span>
-                        <span>Обновлено: {{ live.updated_at }}</span>
-                      </div>
-                      {% if live.active_items %}
-                        <div class="transfer-list">
-                          {% for item in live.active_items[:2] %}
-                            <div class="transfer-item">
-                              <strong>{{ item.name }}</strong>
-                              <span>{{ item.percentage }}% · {{ format_speed(item.speed) }}{% if item.eta_seconds is not none %} · {{ format_eta(item.eta_seconds) }}{% endif %}</span>
-                            </div>
-                          {% endfor %}
-                        </div>
-                      {% endif %}
+            {% set incident = incidents_by_job.get(job.id) %}
+            <article class="control-card job-card">
+              <div class="job-card-layout">
+                <section class="job-card-main">
+                  <div class="job-card-block">
+                    <span class="section-kicker">Status</span>
+                    <div class="status-line">
+                      <strong>{{ job.name }}</strong>
+                      <span class="badge badge-{{ 'running' if live else ('ready' if job.enabled else 'blocked') }}">{{ "выполняется" if live else ("включена" if job.enabled else "на паузе") }}</span>
                     </div>
-                  {% endif %}
-                </section>
 
-                <section class="entity-section entity-route-block">
-                  <span class="entity-label">Маршрут</span>
-                  <div>
-                    {{ job.source_profile.name if job.source_profile else job.source_profile_id }}
-                    /
-                    {{ job.source_path or "." }}
+                    {% if live %}
+                      <div class="live-status">
+                        <div class="live-meta">
+                          <span>{{ format_bytes(live.bytes_transferred) }} из {{ format_bytes(live.total_bytes) }}</span>
+                          <span>{{ live.progress_percent }}%</span>
+                          <span>{{ format_speed(live.speed) }}</span>
+                          <span>{{ format_eta(live.eta_seconds) }}</span>
+                        </div>
+                        <div class="progress-bar" aria-label="Прогресс задачи">
+                          <span style="width: {{ live.progress_percent }}%;"></span>
+                        </div>
+                      </div>
+                    {% elif incident %}
+                      <div class="incident-panel incident-danger compact-incident">
+                        <div class="incident-main">
+                          <span class="status-dot status-failed"></span>
+                          <div>
+                            <strong>Последняя проблема</strong>
+                            <p>{{ incident.summary }}</p>
+                          </div>
+                        </div>
+                        {% if incident.streak > 1 %}
+                          <p class="incident-meta">Та же причина повторилась {{ incident.streak }} раза подряд.</p>
+                        {% endif %}
+                      </div>
+                    {% else %}
+                      <p class="panel-note">Последний известный статус: маршрут готов к следующему запуску.</p>
+                    {% endif %}
                   </div>
-                  <div class="muted">
-                    в
-                    {{ job.target_profile.name if job.target_profile else job.target_profile_id }}
-                    /
-                    {{ job.target_path or "." }}
-                  </div>
-                </section>
 
-                <section class="entity-section entity-meta-block">
-                  <span class="entity-label">Режим</span>
-                  <div>{{ describe_schedule(job.schedule) }}</div>
-                  <div class="muted">{{ job.mode }}</div>
-                </section>
-
-                <section class="entity-section entity-actions-block">
-                  <span class="entity-label">Действия</span>
-                  <div class="job-action-cell">
+                  <div class="job-card-block">
+                    <span class="section-kicker">Route</span>
+                    <div class="route-stack route-stack-compact">
+                      <div>
+                        <strong>{{ job.source_profile.name if job.source_profile else job.source_profile_id }}</strong>
+                        <div class="muted"><code class="break-any">{{ job.source_profile.root_path_or_remote if job.source_profile else "—" }}</code></div>
+                        <div class="muted">Подпуть: {{ job.source_path or "." }}</div>
+                      </div>
+                      <div class="route-arrow">→</div>
+                      <div>
+                        <strong>{{ job.target_profile.name if job.target_profile else job.target_profile_id }}</strong>
+                        <div class="muted"><code class="break-any">{{ job.target_profile.root_path_or_remote if job.target_profile else "—" }}</code></div>
+                        <div class="muted">Подпуть: {{ job.target_path or "." }}</div>
+                      </div>
+                    </div>
                     {% if route_warning %}
-                      <div class="table-note job-note">{{ route_warning }}</div>
+                      <p class="panel-note">{{ route_warning }}</p>
                     {% endif %}
                     {% if run_checklist %}
-                      <div class="checklist-panel checklist-panel-compact">
+                      <div class="checklist-panel compact-checklist">
                         <strong>Перед длинным запуском</strong>
                         <ul class="plain-list compact-list">
                           {% for item in run_checklist[:2] %}
@@ -231,43 +146,45 @@
                         </ul>
                       </div>
                     {% endif %}
-                    <div class="actions job-actions">
-                      {% if needs_manual_start_checklist %}
-                        <a class="button small icon-button" href="/jobs/{{ job.id }}/start" title="Checklist и запуск" aria-label="Checklist и запуск">
-                          <svg class="button-icon" aria-hidden="true"><use href="#icon-check"></use></svg>
-                          <span class="sr-only">Checklist и запуск</span>
-                        </a>
-                      {% else %}
-                        <form method="post" action="/jobs/{{ job.id }}/run">
-                          <button class="button small icon-button" type="submit" title="Запустить" aria-label="Запустить">
-                            <svg class="button-icon" aria-hidden="true"><use href="#icon-play"></use></svg>
-                            <span class="sr-only">Запустить</span>
-                          </button>
-                        </form>
-                      {% endif %}
-                      <form method="post" action="/jobs/{{ job.id }}/preview">
-                        <button class="button secondary small icon-button" type="submit" title="Dry-run" aria-label="Dry-run">
-                          <svg class="button-icon" aria-hidden="true"><use href="#icon-eye"></use></svg>
-                          <span class="sr-only">Dry-run</span>
-                        </button>
+                  </div>
+                </section>
+
+                <section class="job-card-actions">
+                  <span class="section-kicker">Next Action</span>
+                  <div class="action-stack">
+                    {% if needs_manual_start_checklist %}
+                      <a class="button" href="/jobs/{{ job.id }}/start">Checklist и запуск</a>
+                    {% else %}
+                      <form method="post" action="/jobs/{{ job.id }}/run">
+                        <button class="button" type="submit">Запустить</button>
                       </form>
+                    {% endif %}
+                    <a class="button secondary" href="/jobs?edit_job_id={{ job.id }}">Исправить</a>
+                    <a class="button secondary" href="/jobs?clone_job_id={{ job.id }}">Копировать как новую</a>
+                    <form method="post" action="/jobs/{{ job.id }}/preview">
+                      <button class="button secondary" type="submit">Dry-run</button>
+                    </form>
+                    {% if incident %}
+                      <a class="button secondary" href="/runs/{{ incident.run.id }}#run-log">Открыть лог</a>
+                    {% endif %}
+                    <div class="secondary-action-row">
                       {% if live %}
                         <form method="post" action="/jobs/{{ job.id }}/pause">
-                          <button class="button secondary small icon-button" type="submit" title="Остановить" aria-label="Остановить">
+                          <button class="button tertiary icon-button" type="submit" title="Остановить" aria-label="Остановить">
                             <svg class="button-icon" aria-hidden="true"><use href="#icon-pause"></use></svg>
                             <span class="sr-only">Остановить</span>
                           </button>
                         </form>
                       {% elif job.enabled %}
                         <form method="post" action="/jobs/{{ job.id }}/pause">
-                          <button class="button secondary small icon-button" type="submit" title="Пауза" aria-label="Пауза">
+                          <button class="button tertiary icon-button" type="submit" title="Пауза" aria-label="Пауза">
                             <svg class="button-icon" aria-hidden="true"><use href="#icon-pause"></use></svg>
                             <span class="sr-only">Пауза</span>
                           </button>
                         </form>
                       {% else %}
                         <form method="post" action="/jobs/{{ job.id }}/resume">
-                          <button class="button secondary small icon-button" type="submit" title="Возобновить" aria-label="Возобновить">
+                          <button class="button tertiary icon-button" type="submit" title="Возобновить" aria-label="Возобновить">
                             <svg class="button-icon" aria-hidden="true"><use href="#icon-repeat"></use></svg>
                             <span class="sr-only">Возобновить</span>
                           </button>
@@ -275,7 +192,7 @@
                       {% endif %}
                       {% if not live %}
                         <form method="post" action="/jobs/{{ job.id }}/delete">
-                          <button class="button secondary small icon-button" type="submit" title="Удалить" aria-label="Удалить">
+                          <button class="button tertiary icon-button" type="submit" title="Удалить" aria-label="Удалить">
                             <svg class="button-icon" aria-hidden="true"><use href="#icon-trash"></use></svg>
                             <span class="sr-only">Удалить</span>
                           </button>
@@ -291,110 +208,496 @@
       {% else %}
         <p class="empty-state">Задач пока нет. Сначала создайте профили, затем настройте однонаправленную задачу `copy`.</p>
       {% endif %}
-      {% if has_active_runs %}
-        <p class="note">Страница обновляется автоматически каждые 10 секунд, пока есть активные задачи.</p>
-      {% endif %}
+    </article>
+
+    {% set form_should_open = prefill.form_mode != "create" or error or prefill.name or prefill.source_path or prefill.target_path or prefill.source_profile_id or prefill.target_profile_id %}
+    <article class="panel form-panel">
+      <div class="panel-header">
+        <div>
+          <span class="section-kicker">Next Action</span>
+          <h3>{{ form_context.title }}</h3>
+        </div>
+        {% if prefill.form_mode != "create" %}
+          <a class="button secondary" href="/jobs">Сбросить режим</a>
+        {% endif %}
+      </div>
+
+      <details class="job-form-shell" {% if form_should_open %}open{% endif %}>
+        <summary class="job-form-summary">
+          <div>
+            <strong>{{ form_context.title }}</strong>
+            <p>{{ form_context.note }}</p>
+          </div>
+          <span class="button secondary summary-chip">{{ "Свернуть" if form_should_open else "Открыть форму" }}</span>
+        </summary>
+
+        <div class="job-form-body">
+          {% if form_context.banner %}
+            <div class="incident-panel incident-info compact-incident">
+              <div class="incident-main">
+                <span class="status-dot status-info"></span>
+                <div>
+                  <strong>{{ form_context.title }}</strong>
+                  <p>{{ form_context.banner }}</p>
+                </div>
+              </div>
+            </div>
+          {% endif %}
+
+          {% if error %}
+            <div class="incident-panel incident-danger compact-incident">
+              <div class="incident-main">
+                <span class="status-dot status-failed"></span>
+                <div>
+                  <strong>Маршрут требует исправления</strong>
+                  <p>{{ error }}</p>
+                </div>
+              </div>
+            </div>
+          {% endif %}
+
+          <div class="grid two compact-grid slim-insights">
+            {% if transfer_warning %}
+              <div class="incident-panel incident-info compact-incident">
+                <div class="incident-main">
+                  <span class="status-dot status-info"></span>
+                  <div>
+                    <strong>Как пойдет трафик</strong>
+                    <p>{{ transfer_warning }}</p>
+                  </div>
+                </div>
+              </div>
+            {% endif %}
+
+            {% if pre_run_checklist %}
+              <div class="checklist-panel compact-checklist">
+                <strong>Перед длинным запуском</strong>
+                <ul class="plain-list compact-list">
+                  {% for item in pre_run_checklist %}
+                    <li>{{ item }}</li>
+                  {% endfor %}
+                </ul>
+              </div>
+            {% endif %}
+          </div>
+
+          <form method="post" action="{{ '/jobs/' ~ prefill.edit_job_id ~ '/update' if prefill.form_mode == 'edit' and prefill.edit_job_id else '/jobs' }}" class="stack" id="job-form">
+        <label class="{% if prefill.error_field == 'name' %}field-invalid{% endif %}">
+          <span>Название</span>
+          <input name="name" required placeholder="Фото с Synology на Яндекс Диск" value="{{ prefill.name }}" />
+          {% if prefill.error_field == 'name' %}
+            <small class="field-error">{{ error }}</small>
+          {% endif %}
+        </label>
+
+        <div class="grid two compact-grid">
+          <label class="{% if prefill.error_field == 'source_profile_id' %}field-invalid{% endif %}">
+            <span>Профиль-источник</span>
+            <select name="source_profile_id" id="source-profile-select">
+              <option value="">Выберите профиль</option>
+              {% for profile in profiles %}
+                <option
+                  value="{{ profile.id }}"
+                  data-root="{{ profile.root_path_or_remote }}"
+                  data-profile-type="{{ profile.profile_type }}"
+                  {% if prefill.source_profile_id == profile.id %}selected{% endif %}
+                >{{ profile.name }} ({{ profile_type_label(profile.profile_type) }})</option>
+              {% endfor %}
+            </select>
+            {% if prefill.error_field == 'source_profile_id' %}
+              <small class="field-error">{{ error }}</small>
+            {% endif %}
+          </label>
+
+          <label class="{% if prefill.error_field == 'target_profile_id' %}field-invalid{% endif %}">
+            <span>Профиль-назначение</span>
+            <select name="target_profile_id" id="target-profile-select">
+              <option value="">Выберите профиль</option>
+              {% for profile in profiles %}
+                <option
+                  value="{{ profile.id }}"
+                  data-root="{{ profile.root_path_or_remote }}"
+                  data-profile-type="{{ profile.profile_type }}"
+                  {% if prefill.target_profile_id == profile.id %}selected{% endif %}
+                >{{ profile.name }} ({{ profile_type_label(profile.profile_type) }})</option>
+              {% endfor %}
+            </select>
+            {% if prefill.error_field == 'target_profile_id' %}
+              <small class="field-error">{{ error }}</small>
+            {% endif %}
+          </label>
+        </div>
+
+        <div class="grid two compact-grid">
+          <div class="stack compact-stack">
+            <label class="{% if prefill.error_field == 'source_path' %}field-invalid{% endif %}">
+              <span>Подпапка в источнике</span>
+              <input id="source-path-input" name="source_path" placeholder="необязательно/подкаталог" value="{{ prefill.source_path }}" />
+              {% if prefill.error_field == 'source_path' %}
+                <small class="field-error">{{ error }}</small>
+              {% endif %}
+            </label>
+            <div class="quick-fix-card" id="source-path-fix-panel" hidden>
+              <strong>Быстрый фикс для Synology</strong>
+              <p id="source-path-fix-text">У выбранного профиля конечная папка уже включена в корень. Оставьте `source_path` пустым.</p>
+              <button class="button secondary tiny" type="button" id="clear-source-path-button">Очистить source_path</button>
+            </div>
+            <div class="browse-panel" data-kind="source">
+              <div class="browse-panel-head">
+                <strong>Выбор папки</strong>
+                <button class="button secondary tiny" type="button" data-browse-button="source">Показать подпапки</button>
+              </div>
+              <div class="browse-results" id="source-browse-results">Сначала выберите профиль-источник.</div>
+            </div>
+          </div>
+
+          <div class="stack compact-stack">
+            <label class="{% if prefill.error_field == 'target_path' %}field-invalid{% endif %}">
+              <span>Подпапка в назначении</span>
+              <input id="target-path-input" name="target_path" placeholder="backup/2026" value="{{ prefill.target_path }}" />
+              {% if prefill.error_field == 'target_path' %}
+                <small class="field-error">{{ error }}</small>
+              {% endif %}
+            </label>
+            <div class="browse-panel" data-kind="target">
+              <div class="browse-panel-head">
+                <strong>Выбор папки</strong>
+                <button class="button secondary tiny" type="button" data-browse-button="target">Показать подпапки</button>
+              </div>
+              <div class="browse-results" id="target-browse-results">Сначала выберите профиль-назначение.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="route-preview-grid">
+          <article class="route-preview-card">
+            <span class="section-kicker">Route</span>
+            <h4>Источник</h4>
+            <dl class="mini-kv">
+              <div><dt>Корень</dt><dd id="source-root-preview">{{ route_preview.source_root or "—" }}</dd></div>
+              <div><dt>Подпуть</dt><dd id="source-path-preview">{{ route_preview.source_path or "." }}</dd></div>
+              <div><dt>Итог</dt><dd><code class="break-any" id="source-effective-preview">{{ route_preview.source_effective or "—" }}</code></dd></div>
+            </dl>
+          </article>
+          <article class="route-preview-card">
+            <span class="section-kicker">Route</span>
+            <h4>Назначение</h4>
+            <dl class="mini-kv">
+              <div><dt>Корень</dt><dd id="target-root-preview">{{ route_preview.target_root or "—" }}</dd></div>
+              <div><dt>Подпуть</dt><dd id="target-path-preview">{{ route_preview.target_path or "." }}</dd></div>
+              <div><dt>Итог</dt><dd><code class="break-any" id="target-effective-preview">{{ route_preview.target_effective or "—" }}</code></dd></div>
+            </dl>
+          </article>
+        </div>
+
+        <div class="incident-panel incident-info compact-incident" id="route-warning-panel" {% if not route_preview.warnings %}hidden{% endif %}>
+          <div class="incident-main">
+            <span class="status-dot status-info"></span>
+            <div>
+              <strong>Проверьте маршрут</strong>
+              <p id="route-warning-text">{{ route_preview.warnings | join(" ") }}</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="incident-panel incident-info compact-incident" id="synology-scenario-panel">
+          <div class="incident-main">
+            <span class="status-dot status-info"></span>
+            <div>
+              <strong>Synology сценарии</strong>
+              <p>Поддерживаются два безопасных варианта: `profile=/Volumes/home` + `source_path=Ext_HDD` или `profile=/Volumes/home/Ext_HDD` + пустой `source_path`.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid two compact-grid">
+          <label class="{% if prefill.error_field == 'schedule' %}field-invalid{% endif %}">
+            <span>Расписание</span>
+            <input name="schedule" value="{{ prefill.schedule }}" placeholder="manual, hourly, daily, weekly или cron:0 6 * * *" />
+            {% if prefill.error_field == 'schedule' %}
+              <small class="field-error">{{ error }}</small>
+            {% endif %}
+          </label>
+
+          <label class="{% if prefill.error_field == 'bandwidth_limit' %}field-invalid{% endif %}">
+            <span>Ограничение скорости</span>
+            <input name="bandwidth_limit" placeholder="необязательно, например 8M" value="{{ prefill.bandwidth_limit }}" />
+            {% if prefill.error_field == 'bandwidth_limit' %}
+              <small class="field-error">{{ error }}</small>
+            {% endif %}
+          </label>
+        </div>
+
+        <label class="{% if prefill.error_field == 'filters' %}field-invalid{% endif %}">
+          <span>Фильтры</span>
+          <textarea name="filters" rows="5" placeholder="- *.tmp&#10;+ *.jpg&#10;- *">{{ prefill.filters }}</textarea>
+          {% if prefill.error_field == 'filters' %}
+            <small class="field-error">{{ error }}</small>
+          {% endif %}
+        </label>
+
+        <div class="grid two compact-grid">
+          <label class="checkbox">
+            <input type="checkbox" name="enabled" {% if prefill.enabled %}checked{% endif %} />
+            <span>Включить запуск по расписанию</span>
+          </label>
+
+          <label class="checkbox">
+            <input type="checkbox" name="verify_checksum" {% if prefill.verify_checksum %}checked{% endif %} />
+            <span>Проверять контрольные суммы</span>
+          </label>
+        </div>
+
+        <div class="action-row">
+          <button class="button" type="submit" title="{{ form_context.submit_title }}">{{ form_context.submit_label }}</button>
+          {% if prefill.form_mode == "edit" and prefill.edit_job_id %}
+            <a class="button secondary" href="/jobs?preview_job_id={{ prefill.edit_job_id }}">Dry-run этой задачи</a>
+          {% endif %}
+        </div>
+          </form>
+          <p class="panel-note">Примеры расписаний: {{ schedule_examples | join(", ") }}</p>
+        </div>
+      </details>
     </article>
   </section>
 
   {% if preview %}
-    <section class="card">
-      <div class="section-header">
-        <h2>Dry-run preview: {{ preview.job_name }}</h2>
-        <form method="get" action="/jobs">
-          <button class="button secondary small icon-button" type="submit" title="Скрыть preview" aria-label="Скрыть preview">
-            <svg class="button-icon" aria-hidden="true"><use href="#icon-back"></use></svg>
-            <span class="sr-only">Скрыть preview</span>
-          </button>
-        </form>
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <span class="section-kicker">Preview</span>
+          <h3>Dry-run: {{ preview.job_name }}</h3>
+        </div>
+        <a class="button secondary" href="/jobs">Скрыть preview</a>
       </div>
       {% if preview_transfer_warning %}
-        <div class="callout callout-info">
-          <strong>Как пойдет трафик при реальном запуске</strong>
-          <p>{{ preview_transfer_warning }}</p>
+        <div class="incident-panel incident-info compact-incident">
+          <div class="incident-main">
+            <span class="status-dot status-info"></span>
+            <div>
+              <strong>Как пойдет трафик при реальном запуске</strong>
+              <p>{{ preview_transfer_warning }}</p>
+            </div>
+          </div>
         </div>
       {% endif %}
-      {% if preview_checklist %}
-        <div class="callout callout-info">
-          <strong>Что проверить перед нажатием «Запустить»</strong>
-          <ul class="plain-list">
-            {% for item in preview_checklist %}
-              <li>{{ item }}</li>
-            {% endfor %}
-          </ul>
-          <p>Если запуск всё же прервётся, recovery в этом проекте делается через повторный `copy` с дельты, а не через `re-attach` к старому процессу.</p>
-        </div>
-      {% endif %}
-      <div class="grid two align-start">
-        <div>
-          <dl class="key-value">
-            <div><dt>Источник</dt><dd><code class="break-any">{{ preview.source }}</code></dd></div>
-            <div><dt>Назначение</dt><dd><code class="break-any">{{ preview.target }}</code></dd></div>
-            <div><dt>Файлов в источнике</dt><dd>{{ preview.source_files }}</dd></div>
-            <div><dt>Объем источника</dt><dd>{{ format_bytes(preview.source_bytes) }}</dd></div>
-            <div><dt>Dry-run статус</dt><dd>{{ "ok" if preview.dry_run_result.ok else "ошибка" }}</dd></div>
-          </dl>
-        </div>
-        <div>
-          <h3>Команды</h3>
-          <pre>{{ preview.size_command_preview }}</pre>
+      <div class="route-preview-grid">
+        <article class="route-preview-card">
+          <span class="section-kicker">Route</span>
+          <h4>Источник</h4>
+          <code class="break-any">{{ preview.source }}</code>
+          <p class="panel-note">Файлов: {{ preview.source_files }} · Объем: {{ format_bytes(preview.source_bytes) }}</p>
+        </article>
+        <article class="route-preview-card">
+          <span class="section-kicker">Next Action</span>
+          <h4>Dry-run статус</h4>
+          <p>{{ "ok" if preview.dry_run_result.ok else "ошибка" }}</p>
           <pre>{{ preview.command_preview }}</pre>
-        </div>
+        </article>
       </div>
       <div class="grid two align-start">
         <div>
-          <h3>Dry-run stdout</h3>
+          <h4>Dry-run stdout</h4>
           <pre>{{ preview.dry_run_result.stdout or "-" }}</pre>
         </div>
         <div>
-          <h3>Dry-run stderr</h3>
+          <h4>Dry-run stderr</h4>
           <pre>{{ preview.dry_run_result.stderr or "-" }}</pre>
         </div>
       </div>
-      <p class="note">Preview не переносит данные. Оценка по размеру показывает источник целиком, а dry-run показывает, как `rclone copy` видит предстоящие действия.</p>
     </section>
   {% endif %}
 
-  <section class="card">
-    <div class="section-header">
-      <h2>Типовые маршруты</h2>
-      <span class="note">Быстрый старт для первой задачи</span>
+  <section class="panel">
+    <div class="panel-header">
+      <div>
+        <span class="section-kicker">Templates</span>
+        <h3>Типовые маршруты</h3>
+      </div>
+      <span class="panel-note">Быстрый старт для первой или тестовой задачи.</span>
     </div>
     {% if job_templates %}
-      <table>
-        <thead>
-          <tr>
-            <th>Шаблон</th>
-            <th>Источник</th>
-            <th>Назначение</th>
-            <th>Описание</th>
-            <th>Действие</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for item in job_templates %}
-            <tr>
-              <td>{{ item.title }}</td>
-              <td>{{ item.source_name }}</td>
-              <td>{{ item.target_name }}</td>
-              <td>{{ item.description }}</td>
-              <td>
-                <form method="get" action="/jobs">
-                  {% for key, value in item.params.items() %}
-                    <input type="hidden" name="{{ key }}" value="{{ value }}" />
-                  {% endfor %}
-                  <button class="button secondary small icon-button" type="submit" title="Подставить в форму" aria-label="Подставить в форму">
-                    <svg class="button-icon" aria-hidden="true"><use href="#icon-template"></use></svg>
-                    <span class="sr-only">Подставить в форму</span>
-                  </button>
-                </form>
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+      <div class="template-list">
+        {% for item in job_templates %}
+          <article class="template-card">
+            <strong>{{ item.title }}</strong>
+            <p>{{ item.description }}</p>
+            <div class="muted">{{ item.source_name }} → {{ item.target_name }}</div>
+            <form method="get" action="/jobs">
+              {% for key, value in item.params.items() %}
+                <input type="hidden" name="{{ key }}" value="{{ value }}" />
+              {% endfor %}
+              <button class="button secondary" type="submit">Подставить в форму</button>
+            </form>
+          </article>
+        {% endfor %}
+      </div>
     {% else %}
       <p class="empty-state">Шаблоны появятся автоматически, когда будет хотя бы два профиля: источник и назначение.</p>
     {% endif %}
   </section>
+
+  <script>
+    (() => {
+      const bindings = {
+        source: {
+          select: document.getElementById("source-profile-select"),
+          input: document.getElementById("source-path-input"),
+          root: document.getElementById("source-root-preview"),
+          path: document.getElementById("source-path-preview"),
+          effective: document.getElementById("source-effective-preview"),
+          results: document.getElementById("source-browse-results"),
+        },
+        target: {
+          select: document.getElementById("target-profile-select"),
+          input: document.getElementById("target-path-input"),
+          root: document.getElementById("target-root-preview"),
+          path: document.getElementById("target-path-preview"),
+          effective: document.getElementById("target-effective-preview"),
+          results: document.getElementById("target-browse-results"),
+        },
+      };
+
+      const warningPanel = document.getElementById("route-warning-panel");
+      const warningText = document.getElementById("route-warning-text");
+      const synologyPanel = document.getElementById("synology-scenario-panel");
+      const sourcePathFixPanel = document.getElementById("source-path-fix-panel");
+      const sourcePathFixText = document.getElementById("source-path-fix-text");
+      const clearSourcePathButton = document.getElementById("clear-source-path-button");
+
+      function normalizeChild(value) {
+        return (value || "")
+          .trim()
+          .replace(/\\/g, "/")
+          .split("/")
+          .map((part) => part.trim())
+          .filter((part) => part && part !== ".")
+          .join("/");
+      }
+
+      function selectedMeta(select) {
+        const option = select?.selectedOptions?.[0];
+        if (!option || !option.value) {
+          return { root: "", type: "" };
+        }
+        return {
+          root: option.dataset.root || "",
+          type: option.dataset.profileType || "",
+        };
+      }
+
+      function joinPreview(root, child, type) {
+        const normalizedChild = normalizeChild(child);
+        if (!root) {
+          return "—";
+        }
+        if (!normalizedChild) {
+          return root;
+        }
+        if (type === "s3_remote" || type === "yandex_remote" || root.includes(":")) {
+          return root.endsWith(":") ? `${root}${normalizedChild}` : `${root.replace(/\/+$/, "")}/${normalizedChild}`;
+        }
+        return `${root.replace(/\/+$/, "")}/${normalizedChild}`;
+      }
+
+      function collectWarnings() {
+        const warnings = [];
+        let sourceDuplicateRoot = "";
+        Object.values(bindings).forEach((binding) => {
+          const meta = selectedMeta(binding.select);
+          const child = normalizeChild(binding.input.value);
+          const rootTail = meta.root.split("/").filter(Boolean).slice(-1)[0] || "";
+          if (meta.type === "synology_share" && meta.root && !meta.root.startsWith("/Volumes/")) {
+            warnings.push("Для Synology profile нужен путь из `/Volumes`, а не SMB URL или NAS path.");
+          }
+          if (child && rootTail && child.split("/")[0].toLowerCase() === rootTail.toLowerCase()) {
+            warnings.push(`Подпуть "${child.split("/")[0]}" дублирует последнюю папку корня ${meta.root}.`);
+            if (binding === bindings.source && meta.type === "synology_share") {
+              sourceDuplicateRoot = meta.root;
+            }
+          }
+        });
+        if (sourcePathFixPanel) {
+          if (sourceDuplicateRoot) {
+            sourcePathFixPanel.hidden = false;
+            sourcePathFixText.textContent = `У профиля уже выбран путь ${sourceDuplicateRoot}. Для этого случая оставьте source_path пустым.`;
+          } else {
+            sourcePathFixPanel.hidden = true;
+          }
+        }
+        if (!warnings.length) {
+          warningPanel.hidden = true;
+          warningText.textContent = "";
+          return;
+        }
+        warningPanel.hidden = false;
+        warningText.textContent = warnings.join(" ");
+      }
+
+      function renderPreview(kind) {
+        const binding = bindings[kind];
+        const meta = selectedMeta(binding.select);
+        const child = normalizeChild(binding.input.value);
+        binding.root.textContent = meta.root || "—";
+        binding.path.textContent = child || ".";
+        binding.effective.textContent = joinPreview(meta.root, child, meta.type);
+        const sourceType = selectedMeta(bindings.source.select).type;
+        synologyPanel.hidden = sourceType !== "synology_share";
+        collectWarnings();
+      }
+
+      async function loadBrowse(kind) {
+        const binding = bindings[kind];
+        const profileId = binding.select?.value;
+        if (!profileId) {
+          binding.results.textContent = `Сначала выберите профиль-${kind === "source" ? "источник" : "назначение"}.`;
+          return;
+        }
+        binding.results.textContent = "Загружаю подпапки...";
+        const relativePath = encodeURIComponent(normalizeChild(binding.input.value));
+        const response = await fetch(`/api/storage-profiles/${profileId}/browse?relative_path=${relativePath}`);
+        const payload = await response.json();
+        if (!response.ok) {
+          binding.results.textContent = payload.detail || "Не удалось загрузить подпапки.";
+          return;
+        }
+        if (!payload.entries.length) {
+          binding.results.textContent = "Подпапок первого уровня не найдено.";
+          return;
+        }
+        const list = document.createElement("div");
+        list.className = "browse-chip-list";
+        payload.entries.forEach((entry) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "button tertiary tiny";
+          button.textContent = entry;
+          button.addEventListener("click", () => {
+            const prefix = normalizeChild(binding.input.value);
+            binding.input.value = prefix ? `${prefix}/${entry}` : entry;
+            renderPreview(kind);
+          });
+          list.appendChild(button);
+        });
+        binding.results.innerHTML = "";
+        binding.results.appendChild(list);
+      }
+
+      Object.entries(bindings).forEach(([kind, binding]) => {
+        binding.select?.addEventListener("change", () => {
+          renderPreview(kind);
+          loadBrowse(kind);
+        });
+        binding.input?.addEventListener("input", () => renderPreview(kind));
+        document.querySelector(`[data-browse-button="${kind}"]`)?.addEventListener("click", () => loadBrowse(kind));
+        renderPreview(kind);
+      });
+
+      clearSourcePathButton?.addEventListener("click", () => {
+        bindings.source.input.value = "";
+        renderPreview("source");
+        loadBrowse("source");
+      });
+    })();
+  </script>
 {% endblock %}

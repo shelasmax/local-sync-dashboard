@@ -1,199 +1,183 @@
 {% extends "base.html" %}
 
 {% block content %}
-  <section class="grid two align-start workspace-grid">
-    <article class="card setup-card">
-      <h2>Чеклист подготовки</h2>
+  <section class="page-hero compact-hero">
+    <div>
+      <p class="eyebrow">Setup</p>
+      <h2>Подготовка окружения</h2>
+      <p class="page-lead">Готов ли `rclone`, какие пути видит Mac и с чего начать профиль или задачу.</p>
+    </div>
+    <div class="hero-actions">
+      <a class="button secondary" href="/profiles">К профилям</a>
+      <a class="button secondary" href="/jobs">К задачам</a>
+    </div>
+  </section>
+
+  <section class="metric-strip">
+    <article class="metric-tile">
+      <span>Настроенные remote</span>
+      <strong>{{ diagnostics.remotes | length }}</strong>
+    </article>
+    <article class="metric-tile">
+      <span>iCloud paths</span>
+      <strong>{{ diagnostics.local_candidates["icloud"] | length }}</strong>
+    </article>
+    <article class="metric-tile">
+      <span>Google Drive paths</span>
+      <strong>{{ diagnostics.local_candidates["google_drive"] | length }}</strong>
+    </article>
+    <article class="metric-tile">
+      <span>Mounted volumes</span>
+      <strong>{{ diagnostics.local_candidates["mounted_volumes"] | length }}</strong>
+    </article>
+  </section>
+
+  <section class="dashboard-grid">
+    <article class="panel">
+      <div class="panel-header">
+        <div>
+          <span class="section-kicker">Status</span>
+          <h3>Базовая готовность</h3>
+        </div>
+      </div>
       <dl class="key-value">
-        <div><dt>rclone установлен</dt><dd>{{ "да" if diagnostics.rclone_available else "нет" }}</dd></div>
-        <div><dt>Настроенные remote</dt><dd>{{ diagnostics.remotes | length }}</dd></div>
-        <div><dt>Найденные iCloud пути</dt><dd>{{ diagnostics.local_candidates["icloud"] | length }}</dd></div>
-        <div><dt>Найденные Google Drive пути</dt><dd>{{ diagnostics.local_candidates["google_drive"] | length }}</dd></div>
-        <div><dt>Смонтированные тома</dt><dd>{{ diagnostics.local_candidates["mounted_volumes"] | length }}</dd></div>
+        <div><dt>`rclone` установлен</dt><dd>{{ "да" if diagnostics.rclone_available else "нет" }}</dd></div>
+        <div><dt>Профили в приложении</dt><dd>{{ profiles_count }}</dd></div>
       </dl>
       {% if diagnostics.issues %}
-        <h3>Что еще не готово</h3>
-        <ul class="plain-list compact-list">
+        <div class="incident-list">
           {% for issue in diagnostics.issues %}
-            <li>{{ issue }}</li>
+            <article class="incident-panel incident-warn compact-incident">
+              <div class="incident-main">
+                <span class="status-dot status-interrupted"></span>
+                <div>
+                  <strong>Что ещё не готово</strong>
+                  <p>{{ issue }}</p>
+                </div>
+              </div>
+            </article>
           {% endfor %}
-        </ul>
+        </div>
       {% else %}
-        <p class="empty-state">Все нужное для первой задачи уже видно из приложения.</p>
+        <p class="panel-note">Все нужное для первого маршрута уже видно из приложения.</p>
       {% endif %}
     </article>
 
-    <article class="card setup-card">
-      <h2>Следующие шаги</h2>
-      <div class="checklist-panel checklist-panel-compact">
-      <ol class="plain-list compact-list">
-        <li>Настройте remote-подключения `rclone` для Яндекс Диска и S3 через `rclone config`.</li>
-        <li>Создайте профили хранилищ в приложении, используя remote-имена или локальные пути ниже.</li>
-        <li>Создайте однонаправленную задачу `copy` и сначала запустите ее вручную.</li>
-      </ol>
+    <article class="panel">
+      <div class="panel-header">
+        <div>
+          <span class="section-kicker">Route</span>
+          <h3>Важно для Synology SMB</h3>
+        </div>
       </div>
-      <p class="note">Используйте точные имена remote без ручного редактирования SQLite.</p>
+      <div class="incident-panel incident-info compact-incident">
+        <div class="incident-main">
+          <span class="status-dot status-info"></span>
+          <div>
+            <strong>Используйте mount path из `/Volumes`</strong>
+            <p>Если Finder показывает `smb://host/share/path`, в профиле нужен уже смонтированный локальный путь macOS. Для `smb://Synology_Max._smb._tcp.local/home/Ext_HDD` это обычно `/Volumes/home/Ext_HDD` или `/Volumes/home` + `source_path=Ext_HDD` в задаче.</p>
+          </div>
+        </div>
+      </div>
+      <div class="checklist-panel compact-checklist">
+        <strong>Практический порядок</strong>
+        <ul class="plain-list compact-list">
+          <li>Сначала проверьте `rclone` remote и mounted volume.</li>
+          <li>Потом создайте профиль из найденного path или remote.</li>
+          <li>После этого подставьте шаблон задачи или соберите маршрут вручную.</li>
+        </ul>
+      </div>
     </article>
   </section>
 
-  <section class="card">
-    <h2>Важно для облачных маршрутов</h2>
-    <div class="callout callout-info recovery-callout">
-      <strong>S3 -> Яндекс Диск и другие cloud-to-cloud сценарии идут через этот Mac</strong>
-      <p>`rclone` работает локально: читает данные из source и потом отправляет их в target. Это значит, что скорость зависит от локального интернета, а sleep или перезагрузка Mac остановят текущий перенос.</p>
+  <section class="panel">
+    <div class="panel-header">
+      <div>
+        <span class="section-kicker">Discovery</span>
+        <h3>Найденные локальные пути и remote</h3>
+      </div>
+    </div>
+    <div class="setup-discovery-grid">
+      <article class="route-preview-card">
+        <h4>Remote</h4>
+        {% if diagnostics.remotes %}
+          <div class="path-list">
+            {% for remote in diagnostics.remotes %}
+              <code>{{ remote }}:</code>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="empty-state">Remote-подключения `rclone` пока не найдены.</p>
+        {% endif %}
+      </article>
+      <article class="route-preview-card">
+        <h4>Mounted volumes / NAS</h4>
+        {% if diagnostics.local_candidates["mounted_volumes"] %}
+          <div class="path-list">
+            {% for path in diagnostics.local_candidates["mounted_volumes"] %}
+              <code class="break-any">{{ path }}</code>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="empty-state">В `/Volumes` не найдены смонтированные внешние тома.</p>
+        {% endif %}
+      </article>
     </div>
   </section>
 
-  <section class="grid two align-start workspace-grid">
-    <article class="card setup-card">
-      <h2>Найденные remote</h2>
-      {% if diagnostics.remotes %}
-        <ul class="plain-list compact-list">
-          {% for remote in diagnostics.remotes %}
-            <li><code>{{ remote }}:</code></li>
-          {% endfor %}
-        </ul>
-      {% else %}
-        <p class="empty-state">Remote-подключения `rclone` пока не найдены.</p>
-      {% endif %}
-
-      <h3>Команды для настройки</h3>
-      <pre>rclone config
-
-# После настройки ожидаются remote-имена наподобие:
-yadisk:
-s3home:</pre>
-    </article>
-
-    <article class="card setup-card">
-      <h2>Найденные локальные пути</h2>
-
-      <h3>iCloud Drive</h3>
-      {% if diagnostics.local_candidates["icloud"] %}
-        <ul class="plain-list compact-list">
-          {% for path in diagnostics.local_candidates["icloud"] %}
-            <li><code class="break-any">{{ path }}</code></li>
-          {% endfor %}
-        </ul>
-      {% else %}
-        <p class="empty-state">Путь к iCloud Drive не найден.</p>
-      {% endif %}
-
-      <h3>Google Drive</h3>
-      {% if diagnostics.local_candidates["google_drive"] %}
-        <ul class="plain-list compact-list">
-          {% for path in diagnostics.local_candidates["google_drive"] %}
-            <li><code class="break-any">{{ path }}</code></li>
-          {% endfor %}
-        </ul>
-      {% else %}
-        <p class="empty-state">Папка Google Drive for Desktop не найдена.</p>
-      {% endif %}
-
-      <h3>Смонтированные тома / NAS-шары</h3>
-      {% if diagnostics.local_candidates["mounted_volumes"] %}
-        <ul class="plain-list compact-list">
-          {% for path in diagnostics.local_candidates["mounted_volumes"] %}
-            <li><code class="break-any">{{ path }}</code></li>
-          {% endfor %}
-        </ul>
-      {% else %}
-        <p class="empty-state">В <code>/Volumes</code> не найдены смонтированные внешние тома.</p>
-      {% endif %}
-    </article>
-  </section>
-
-  <section class="card">
-    <div class="section-header">
-      <h2>Быстрый переход к созданию профилей</h2>
-      <a class="button secondary icon-button" href="/profiles" title="Открыть форму профиля" aria-label="Открыть форму профиля">
-        <svg class="button-icon" aria-hidden="true"><use href="#icon-plus"></use></svg>
-        <span class="sr-only">Открыть форму профиля</span>
-      </a>
+  <section class="panel">
+    <div class="panel-header">
+      <div>
+        <span class="section-kicker">Next Action</span>
+        <h3>Быстрый переход к созданию профилей</h3>
+      </div>
     </div>
     {% if suggestions %}
-      <div class="table-wrap">
-      <table class="setup-table">
-        <thead>
-          <tr>
-            <th>Рекомендуемое имя</th>
-            <th>Тип</th>
-            <th>Путь / remote</th>
-            <th>Комментарий</th>
-            <th>Действие</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for item in suggestions %}
-            <tr>
-              <td>{{ item.name }}</td>
-              <td>{{ profile_type_label(item.profile_type) }}</td>
-              <td><code class="break-any">{{ item.path }}</code></td>
-              <td>{{ item.description }}</td>
-              <td>
-                <form method="get" action="/profiles">
-                  <input type="hidden" name="suggested_name" value="{{ item.name }}" />
-                  <input type="hidden" name="suggested_type" value="{{ item.profile_type }}" />
-                  <input type="hidden" name="suggested_root" value="{{ item.path }}" />
-                  <button class="button secondary small icon-button" type="submit" title="Подставить в форму" aria-label="Подставить в форму">
-                    <svg class="button-icon" aria-hidden="true"><use href="#icon-template"></use></svg>
-                    <span class="sr-only">Подставить в форму</span>
-                  </button>
-                </form>
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+      <div class="template-list setup-template-list">
+        {% for item in suggestions %}
+          <article class="template-card">
+            <strong>{{ item.name }}</strong>
+            <p>{{ item.description }}</p>
+            <code class="break-any">{{ item.path }}</code>
+            <form method="get" action="/profiles">
+              <input type="hidden" name="suggested_name" value="{{ item.name }}" />
+              <input type="hidden" name="suggested_type" value="{{ item.profile_type }}" />
+              <input type="hidden" name="suggested_root" value="{{ item.path }}" />
+              <button class="button secondary" type="submit">Подставить в форму профиля</button>
+            </form>
+          </article>
+        {% endfor %}
       </div>
     {% else %}
       <p class="empty-state">Пока нечего предлагать автоматически. Сначала настройте remote или подключите локальные источники.</p>
     {% endif %}
   </section>
 
-  <section class="card">
-    <div class="section-header">
-      <h2>Шаблоны первых задач</h2>
-      <a class="button secondary icon-button" href="/jobs" title="Открыть форму задач" aria-label="Открыть форму задач">
-        <svg class="button-icon" aria-hidden="true"><use href="#icon-plus"></use></svg>
-        <span class="sr-only">Открыть форму задач</span>
-      </a>
+  <section class="panel">
+    <div class="panel-header">
+      <div>
+        <span class="section-kicker">Templates</span>
+        <h3>Шаблоны первых задач</h3>
+      </div>
     </div>
     {% if job_templates %}
-      <div class="table-wrap">
-      <table class="setup-table">
-        <thead>
-          <tr>
-            <th>Шаблон</th>
-            <th>Маршрут</th>
-            <th>Описание</th>
-            <th>Действие</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for item in job_templates %}
-            <tr>
-              <td>{{ item.title }}</td>
-              <td>{{ item.source_name }} -> {{ item.target_name }}</td>
-              <td>{{ item.description }}</td>
-              <td>
-                <form method="get" action="/jobs">
-                  {% for key, value in item.params.items() %}
-                    <input type="hidden" name="{{ key }}" value="{{ value }}" />
-                  {% endfor %}
-                  <button class="button secondary small icon-button" type="submit" title="Открыть шаблон" aria-label="Открыть шаблон">
-                    <svg class="button-icon" aria-hidden="true"><use href="#icon-template"></use></svg>
-                    <span class="sr-only">Открыть шаблон</span>
-                  </button>
-                </form>
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+      <div class="template-list setup-template-list">
+        {% for item in job_templates %}
+          <article class="template-card">
+            <strong>{{ item.title }}</strong>
+            <p>{{ item.description }}</p>
+            <div class="muted">{{ item.source_name }} → {{ item.target_name }}</div>
+            <form method="get" action="/jobs">
+              {% for key, value in item.params.items() %}
+                <input type="hidden" name="{{ key }}" value="{{ value }}" />
+              {% endfor %}
+              <button class="button secondary" type="submit">Открыть как новую задачу</button>
+            </form>
+          </article>
+        {% endfor %}
       </div>
     {% elif profiles_count > 0 %}
-      <p class="empty-state">Создайте еще хотя бы один профиль, и приложение предложит типовые маршруты для задач.</p>
+      <p class="empty-state">Создайте еще хотя бы один профиль, и приложение предложит типовые маршруты.</p>
     {% else %}
       <p class="empty-state">Сначала создайте профили хранилищ, и здесь появятся готовые шаблоны задач.</p>
     {% endif %}

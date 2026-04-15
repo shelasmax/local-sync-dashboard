@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+import os
+import tempfile
 import unittest
 from unittest.mock import patch
+from urllib.parse import parse_qsl
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -10,18 +13,27 @@ from starlette.requests import Request
 
 from app.database import Base
 from app.main import (
+    api_browse_profile,
+    api_create_job,
+    build_job_form_query,
+    create_job_html,
     interrupted_run_recovery_steps,
     job_pre_run_checklist,
     job_requires_manual_start_checklist,
     jobs_page,
     manual_start_page,
     job_transfer_warning,
+    prefill_job_payload,
     profile_diagnostic_actions,
     profile_diagnostic_hints,
+    profiles_page,
     run_detail_page,
     runs_page,
+    setup_page,
+    update_job_html,
 )
 from app.models import ProfileType, RunHistory, StorageProfile, SyncJob
+from app.schemas import SyncJobPayload
 from app.services.common import encode_json
 
 
@@ -177,6 +189,77 @@ class MainHelpersTest(unittest.TestCase):
         self.assertIn("Исправить профиль", labels)
         self.assertIn("Проверить после исправления", labels)
 
+    def test_profiles_page_shows_synology_mount_path_hint(self):
+        engine = create_engine("sqlite:///:memory:", future=True)
+        TestingSession = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+        Base.metadata.create_all(engine)
+        session = TestingSession()
+        try:
+            request = Request(
+                {
+                    "type": "http",
+                    "http_version": "1.1",
+                    "method": "GET",
+                    "scheme": "http",
+                    "path": "/profiles",
+                    "raw_path": b"/profiles",
+                    "query_string": b"",
+                    "headers": [],
+                    "client": ("testclient", 50000),
+                    "server": ("testserver", 80),
+                }
+            )
+            response = profiles_page(request, session=session)
+            body = response.body.decode()
+        finally:
+            session.close()
+            Base.metadata.drop_all(engine)
+            engine.dispose()
+
+        self.assertIn("Как указывать путь для Synology", body)
+        self.assertIn("/Volumes/home", body)
+
+    def test_setup_page_shows_synology_mount_path_hint(self):
+        engine = create_engine("sqlite:///:memory:", future=True)
+        TestingSession = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+        Base.metadata.create_all(engine)
+        session = TestingSession()
+        request = Request(
+            {
+                "type": "http",
+                "http_version": "1.1",
+                "method": "GET",
+                "scheme": "http",
+                "path": "/setup",
+                "raw_path": b"/setup",
+                "query_string": b"",
+                "headers": [],
+                "client": ("testclient", 50000),
+                "server": ("testserver", 80),
+            }
+        )
+        diagnostics = type(
+            "Diagnostics",
+            (),
+            {
+                "rclone_available": True,
+                "remotes": [],
+                "local_candidates": {"icloud": [], "google_drive": [], "mounted_volumes": ["/Volumes/home"]},
+                "issues": [],
+            },
+        )()
+        try:
+            with patch("app.main.collect_setup_diagnostics", return_value=diagnostics):
+                response = setup_page(request, session=session)
+                body = response.body.decode()
+        finally:
+            session.close()
+            Base.metadata.drop_all(engine)
+            engine.dispose()
+
+        self.assertIn("Используйте mount path из `/Volumes`", body)
+        self.assertIn("/Volumes/home/Ext_HDD", body)
+
 
 class MainPagesRecoveryUxTest(unittest.TestCase):
     def setUp(self):
@@ -288,10 +371,10 @@ class MainPagesRecoveryUxTest(unittest.TestCase):
         body = response.body.decode()
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("Перед длинным запуском проверьте", body)
-        self.assertIn("recovery в этом проекте делается через повторный `copy` с дельты", body)
+        self.assertIn("Control Room", body)
         self.assertIn("Проверьте причину прерывания", body)
         self.assertIn("Checklist и запуск", body)
+        self.assertIn("Открыть лог", body)
 
     def test_runs_page_shows_recovery_explanation(self):
         request = self._request("/runs")
@@ -299,8 +382,8 @@ class MainPagesRecoveryUxTest(unittest.TestCase):
         body = response.body.decode()
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("Как читать recovery на этой странице", body)
-        self.assertIn("без `re-attach` к старому процессу", body)
+        self.assertIn("Прерванные запуски", body)
+        self.assertIn("`re-attach` не поддерживается", body)
         self.assertIn("Checklist и запуск", body)
 
     def test_run_detail_page_shows_recovery_steps(self):
@@ -309,9 +392,9 @@ class MainPagesRecoveryUxTest(unittest.TestCase):
         body = response.body.decode()
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("Запуск был прерван.", body)
+        self.assertIn("Запуск был прерван", body)
         self.assertIn("Для длинного повторного запуска выберите окно", body)
-        self.assertIn("Открыть checklist перед повтором", body)
+        self.assertIn("Checklist и запуск", body)
 
     def test_manual_start_page_shows_explicit_checklist_and_cta(self):
         request = self._request(f"/jobs/{self.job.id}/start")
@@ -320,9 +403,273 @@ class MainPagesRecoveryUxTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("Проверка перед ручным запуском", body)
-        self.assertIn("Перед нажатием «Запустить copy сейчас» проверьте всё ниже", body)
+        self.assertIn("Перед нажатием «Запустить»", body)
         self.assertIn("Запустить copy сейчас", body)
         self.assertIn("Сначала сделать Dry-run", body)
+
+
+class MainCreateJobErrorHandlingTest(unittest.TestCase):
+    def setUp(self):
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.source_root = os.path.join(self.tempdir.name, "source")
+        self.target_root = os.path.join(self.tempdir.name, "target")
+        os.makedirs(self.source_root, exist_ok=True)
+        os.makedirs(self.target_root, exist_ok=True)
+        self.engine = create_engine("sqlite:///:memory:", future=True)
+        TestingSession = sessionmaker(bind=self.engine, autoflush=False, autocommit=False, expire_on_commit=False)
+        Base.metadata.create_all(self.engine)
+        self.session = TestingSession()
+
+        source = StorageProfile(
+            name="Source",
+            profile_type=ProfileType.LOCAL_FOLDER.value,
+            root_path_or_remote=self.source_root,
+            status="ready",
+            options_json=encode_json({}),
+        )
+        target = StorageProfile(
+            name="Target",
+            profile_type=ProfileType.LOCAL_FOLDER.value,
+            root_path_or_remote=self.target_root,
+            status="ready",
+            options_json=encode_json({}),
+        )
+        self.session.add_all([source, target])
+        self.session.commit()
+        self.session.refresh(source)
+        self.session.refresh(target)
+        self.source = source
+        self.target = target
+
+    def tearDown(self):
+        self.session.close()
+        Base.metadata.drop_all(self.engine)
+        self.engine.dispose()
+        self.tempdir.cleanup()
+
+    def test_create_job_html_redirects_back_on_validation_error(self):
+        response = create_job_html(
+            name="x",
+            source_profile_id=self.source.id,
+            source_path="photos/raw",
+            target_profile_id=self.target.id,
+            target_path="backup/2026",
+            schedule="weekly",
+            enabled=True,
+            bandwidth_limit="8M",
+            verify_checksum=True,
+            filters="+ *.jpg",
+            session=self.session,
+        )
+
+        self.assertEqual(response.status_code, 303)
+        self.assertIn("/jobs?error=", response.headers["location"])
+        self.assertIn("source_path=photos%2Fraw", response.headers["location"])
+        self.assertIn("target_path=backup%2F2026", response.headers["location"])
+        self.assertIn("bandwidth_limit=8M", response.headers["location"])
+        self.assertIn("verify_checksum=true", response.headers["location"])
+        self.assertIn("enabled=true", response.headers["location"])
+        self.assertIn("error_field=name", response.headers["location"])
+
+    def test_create_job_html_redirects_back_on_duplicate_name(self):
+        payload = SyncJobPayload(
+            name="Daily copy",
+            source_profile_id=self.source.id,
+            source_path="",
+            target_profile_id=self.target.id,
+            target_path="",
+            schedule="manual",
+            enabled=True,
+            filters=[],
+        )
+        api_create_job(payload, session=self.session)
+
+        response = create_job_html(
+            name="Daily copy",
+            source_profile_id=self.source.id,
+            source_path="",
+            target_profile_id=self.target.id,
+            target_path="",
+            schedule="manual",
+            enabled=True,
+            bandwidth_limit="",
+            verify_checksum=False,
+            filters="",
+            session=self.session,
+        )
+
+        self.assertEqual(response.status_code, 303)
+        self.assertIn("/jobs?error=", response.headers["location"])
+        self.assertIn("name=Daily+copy", response.headers["location"])
+        self.assertIn("error_field=name", response.headers["location"])
+
+    def test_prefill_job_payload_accepts_name_from_error_redirect(self):
+        query = build_job_form_query(
+            error="oops",
+            name="Night copy",
+            source_profile_id=self.source.id,
+            source_path="photos",
+            target_profile_id=self.target.id,
+            target_path="backup",
+            schedule="weekly",
+            bandwidth_limit="8M",
+            verify_checksum=True,
+            filters="+ *.jpg",
+            enabled=True,
+        )
+        payload = prefill_job_payload(dict(parse_qsl(query)))
+
+        self.assertEqual(payload["name"], "Night copy")
+        self.assertEqual(payload["source_path"], "photos")
+        self.assertEqual(payload["target_path"], "backup")
+        self.assertEqual(payload["schedule"], "weekly")
+        self.assertEqual(payload["bandwidth_limit"], "8M")
+        self.assertTrue(payload["verify_checksum"])
+        self.assertTrue(payload["enabled"])
+        self.assertEqual(payload["error_field"], "")
+
+    def test_build_job_form_query_omits_empty_edit_and_clone_ids(self):
+        query = build_job_form_query(
+            error="oops",
+            name="Night copy",
+            source_profile_id=self.source.id,
+            source_path="photos",
+            target_profile_id=self.target.id,
+            target_path="backup",
+            schedule="weekly",
+            bandwidth_limit="8M",
+            verify_checksum=True,
+            filters="+ *.jpg",
+            enabled=True,
+        )
+
+        params = dict(parse_qsl(query))
+
+        self.assertNotIn("edit_job_id", params)
+        self.assertNotIn("clone_job_id", params)
+
+    def test_jobs_page_prefills_edit_mode(self):
+        job = SyncJob(
+            name="Editable job",
+            source_profile_id=self.source.id,
+            source_path="photos",
+            target_profile_id=self.target.id,
+            target_path="backup",
+            schedule="manual",
+            enabled=True,
+            mode="copy",
+            filters_json="[]",
+            verify_checksum=False,
+        )
+        self.session.add(job)
+        self.session.commit()
+        self.session.refresh(job)
+
+        request = Request(
+            {
+                "type": "http",
+                "http_version": "1.1",
+                "method": "GET",
+                "scheme": "http",
+                "path": "/jobs",
+                "raw_path": b"/jobs",
+                "query_string": f"edit_job_id={job.id}".encode(),
+                "headers": [],
+                "client": ("testclient", 50000),
+                "server": ("testserver", 80),
+            }
+        )
+        response = jobs_page(request, edit_job_id=job.id, session=self.session)
+        body = response.body.decode()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Редактирование задачи", body)
+        self.assertIn("Editable job", body)
+
+    def test_jobs_page_prefills_clone_mode(self):
+        job = SyncJob(
+            name="Clone me",
+            source_profile_id=self.source.id,
+            source_path="photos",
+            target_profile_id=self.target.id,
+            target_path="backup",
+            schedule="manual",
+            enabled=True,
+            mode="copy",
+            filters_json="[]",
+            verify_checksum=False,
+        )
+        self.session.add(job)
+        self.session.commit()
+        self.session.refresh(job)
+
+        request = Request(
+            {
+                "type": "http",
+                "http_version": "1.1",
+                "method": "GET",
+                "scheme": "http",
+                "path": "/jobs",
+                "raw_path": b"/jobs",
+                "query_string": f"clone_job_id={job.id}".encode(),
+                "headers": [],
+                "client": ("testclient", 50000),
+                "server": ("testserver", 80),
+            }
+        )
+        response = jobs_page(request, clone_job_id=job.id, session=self.session)
+        body = response.body.decode()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Новая задача на основе текущей", body)
+        self.assertIn("Clone me (copy)", body)
+
+    def test_update_job_html_updates_existing_job(self):
+        payload = SyncJobPayload(
+            name="Daily copy",
+            source_profile_id=self.source.id,
+            source_path="incoming",
+            target_profile_id=self.target.id,
+            target_path="archive",
+            schedule="manual",
+            enabled=True,
+            filters=[],
+        )
+        job = api_create_job(payload, session=self.session)
+
+        response = update_job_html(
+            job_id=job.id,
+            name="Daily copy updated",
+            source_profile_id=self.source.id,
+            source_path="incoming/final",
+            target_profile_id=self.target.id,
+            target_path="archive/final",
+            schedule="weekly",
+            enabled=False,
+            bandwidth_limit="8M",
+            verify_checksum=True,
+            filters="+ *.jpg",
+            session=self.session,
+        )
+
+        self.assertEqual(response.status_code, 303)
+        updated = self.session.get(SyncJob, job.id)
+        assert updated is not None
+        self.assertEqual(updated.name, "Daily copy updated")
+        self.assertEqual(updated.source_path, "incoming/final")
+        self.assertEqual(updated.schedule, "weekly")
+        self.assertFalse(updated.enabled)
+
+    def test_api_browse_profile_lists_local_subdirectories(self):
+        os.makedirs(os.path.join(self.source_root, "photos"), exist_ok=True)
+        os.makedirs(os.path.join(self.source_root, "docs"), exist_ok=True)
+
+        payload = api_browse_profile(self.source.id, session=self.session)
+
+        self.assertEqual(payload["profile_id"], self.source.id)
+        self.assertEqual(payload["effective_path"], self.source_root)
+        self.assertIn("photos", payload["entries"])
+        self.assertIn("docs", payload["entries"])
 
 
 if __name__ == "__main__":

@@ -9,75 +9,98 @@
     </script>
   {% endif %}
 
-  <section class="card">
-    <div class="section-header">
-      <h2>История запусков</h2>
-      <span class="note">Сначала новые. Активные задачи обновляются автоматически.</span>
+  <section class="page-hero compact-hero">
+    <div>
+      <p class="eyebrow">Run History</p>
+      <h2>Запуски и recovery</h2>
+      <p class="page-lead">История запусков с понятным следующим шагом: исправить, повторить с дельты или проверить setup.</p>
     </div>
-    {% if error %}
-      <p class="empty-state">{{ error }}</p>
-    {% endif %}
-    {% if interrupted_runs %}
-      <div class="stack recovery-stack">
+    <div class="hero-actions">
+      <a class="button secondary" href="/jobs">Вернуться к задачам</a>
+    </div>
+  </section>
+
+  {% if error %}
+    <section class="panel">
+      <div class="incident-panel incident-danger compact-incident">
+        <div class="incident-main">
+          <span class="status-dot status-failed"></span>
+          <div>
+            <strong>Recovery остановлен</strong>
+            <p>{{ error }}</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  {% endif %}
+
+  {% if interrupted_runs %}
+    <section class="panel stack-panel">
+      <div class="panel-header">
+        <div>
+          <span class="section-kicker">Recovery</span>
+          <h3>Прерванные запуски</h3>
+        </div>
+        <span class="panel-note">`re-attach` не поддерживается; recovery идет через повторный `copy` с дельты.</span>
+      </div>
+      <div class="incident-list">
         {% for run in interrupted_runs %}
-          <div class="callout callout-warn recovery-callout">
-            <strong>{{ run.job.name if run.job else ("Задача #" ~ run.job_id) }}</strong>
-            <p>{{ run.summary }}</p>
-            <ul class="plain-list compact-list recovery-list">
+          <article class="incident-panel incident-warn">
+            <div class="incident-main">
+              <span class="status-dot status-interrupted"></span>
+              <div>
+                <strong>{{ run.job.name if run.job else ("Задача #" ~ run.job_id) }}</strong>
+                <p>{{ run.summary }}</p>
+              </div>
+            </div>
+            <ul class="plain-list compact-list incident-list-items">
               {% for item in interrupted_run_recovery_steps(run) %}
                 <li>{{ item }}</li>
               {% endfor %}
             </ul>
-            <div class="actions recovery-actions">
-              <a class="button secondary small icon-button" href="/runs/{{ run.id }}" title="Открыть запуск" aria-label="Открыть запуск">
-                <svg class="button-icon" aria-hidden="true"><use href="#icon-eye"></use></svg>
-                <span class="sr-only">Открыть запуск</span>
-              </a>
+            <div class="action-row">
+              <a class="button secondary" href="/runs/{{ run.id }}">Открыть запуск</a>
               {% if run.job %}
-                <form method="post" action="/runs/{{ run.id }}/retry">
-                  <button class="button secondary small icon-button" type="submit" title="Повторить с дельты" aria-label="Повторить с дельты">
-                    <svg class="button-icon" aria-hidden="true"><use href="#icon-repeat"></use></svg>
-                    <span class="sr-only">Повторить с дельты</span>
-                  </button>
-                </form>
+                <a class="button secondary" href="/jobs?edit_job_id={{ run.job.id }}">Исправить маршрут</a>
+                {% if job_requires_manual_start_checklist(run.job) %}
+                  <a class="button" href="/jobs/{{ run.job.id }}/start">Checklist и запуск</a>
+                {% else %}
+                  <form method="post" action="/runs/{{ run.id }}/retry">
+                    <button class="button" type="submit">Повторить с дельты</button>
+                  </form>
+                {% endif %}
               {% endif %}
             </div>
-          </div>
+          </article>
         {% endfor %}
       </div>
-    {% endif %}
-    <div class="callout callout-info">
-      <strong>Как читать recovery на этой странице</strong>
-      <p>Если run отмечен как `прервано`, это означает, что приложение сохранило последний известный прогресс и предлагает безопасный повторный `copy` с дельты. Возврат к уже живому `rclone` процессу не поддерживается.</p>
+    </section>
+  {% endif %}
+
+  <section class="panel">
+    <div class="panel-header">
+      <div>
+        <span class="section-kicker">History</span>
+        <h3>Лента запусков</h3>
+      </div>
+      <span class="panel-note">Сначала новые. Для каждого запуска видны причина, маршрут и следующий безопасный шаг.</span>
     </div>
     {% if runs %}
-      <div class="table-wrap">
-      <table class="runs-table">
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Задача</th>
-            <th>Статус</th>
-            <th>Старт</th>
-            <th>Завершение</th>
-            <th>Перенесено</th>
-            <th>Итог</th>
-            <th>Recovery</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for run in runs %}
-            {% set live = active_runs.get(run.job_id) %}
-            <tr>
-              <td><a href="/runs/{{ run.id }}">#{{ run.id }}</a></td>
-              <td>
-                <strong>{{ run.job.name if run.job else run.job_id }}</strong>
-                {% if run.job %}
-                  {% set transfer_warning = job_transfer_warning(run.job.source_profile, run.job.target_profile) %}
-                  {% if transfer_warning %}
-                    <div class="table-note">{{ transfer_warning }}</div>
-                  {% endif %}
-                {% endif %}
+      <div class="control-list runs-list">
+        {% for run in runs %}
+          {% set live = active_runs.get(run.job_id) %}
+          {% set incident = incidents_by_job.get(run.job_id) if run.job_id else None %}
+          <article class="control-card run-card">
+            <div class="run-card-layout">
+              <section class="run-card-main">
+                <div class="run-card-block">
+                <span class="section-kicker">Status</span>
+                <div class="status-line">
+                  <strong>{{ run.job.name if run.job else run.job_id }}</strong>
+                  <span class="badge badge-{{ run.status }}">{{ status_label(run.status) }}</span>
+                </div>
+                <div class="panel-note">Старт: {{ run.started_at }}</div>
+                <div class="panel-note">Файлы: {{ run.files_transferred }} · {{ format_bytes(run.bytes_transferred) }}</div>
                 {% if live and live.run_id == run.id %}
                   <div class="live-status compact">
                     <div class="live-meta">
@@ -91,48 +114,62 @@
                     </div>
                   </div>
                 {% endif %}
-              </td>
-              <td><span class="badge badge-{{ run.status }}">{{ status_label(run.status) }}</span></td>
-              <td>{{ run.started_at }}</td>
-              <td>{{ run.finished_at or "-" }}</td>
-              <td>{{ run.files_transferred }} файлов / {{ format_bytes(run.bytes_transferred) }}</td>
-              <td>
-                <div class="run-summary-cell">
-                  <div>{{ run.summary }}</div>
-                  {% if run.status == "interrupted" %}
-                    <div class="table-note run-summary-note">Можно безопасно повторить задачу: recovery идет через повторный `copy` с дельты, без удаления уже переданных данных и без `re-attach` к старому процессу.</div>
+                </div>
+
+                <div class="run-card-block">
+                <span class="section-kicker">Summary</span>
+                <p>{{ run.summary }}</p>
+                {% if incident and incident.run and incident.run.id == run.id and incident.streak > 1 %}
+                  <div class="incident-panel incident-danger compact-incident">
+                    <div class="incident-main">
+                      <span class="status-dot status-failed"></span>
+                      <div>
+                        <strong>Повторяющаяся причина</strong>
+                        <p>Та же ошибка встречается {{ incident.streak }} раза подряд.</p>
+                      </div>
+                    </div>
+                  </div>
+                {% endif %}
+                  {% if run.job %}
+                    <div class="run-route-inline">
+                      <div>
+                        <strong>{{ run.job.source_profile.name if run.job.source_profile else run.job.source_profile_id }}</strong>
+                        <div class="muted"><code class="break-any">{{ run.job.source_profile.root_path_or_remote if run.job.source_profile else "—" }}</code></div>
+                        <div class="muted">Подпуть: {{ run.job.source_path or "." }}</div>
+                      </div>
+                      <div class="route-arrow">→</div>
+                      <div>
+                        <strong>{{ run.job.target_profile.name if run.job.target_profile else run.job.target_profile_id }}</strong>
+                        <div class="muted"><code class="break-any">{{ run.job.target_profile.root_path_or_remote if run.job.target_profile else "—" }}</code></div>
+                        <div class="muted">Подпуть: {{ run.job.target_path or "." }}</div>
+                      </div>
+                    </div>
                   {% endif %}
                 </div>
-              </td>
-              <td>
-                {% if run.job %}
-                  <div class="run-recovery-cell">
+              </section>
+
+              <section class="run-card-actions">
+                <span class="section-kicker">Next Action</span>
+                <div class="action-stack">
+                  <a class="button" href="/runs/{{ run.id }}">Открыть запуск</a>
+                  {% if run.job %}
+                    <a class="button secondary" href="/jobs?edit_job_id={{ run.job.id }}">Исправить</a>
+                    <a class="button secondary" href="/jobs?clone_job_id={{ run.job.id }}">Копировать как новую</a>
+                  {% endif %}
+                  {% if run.job and run.status == "interrupted" %}
                     {% if job_requires_manual_start_checklist(run.job) %}
-                      <a class="button secondary small icon-button" href="/jobs/{{ run.job.id }}/start" title="Checklist и запуск" aria-label="Checklist и запуск">
-                        <svg class="button-icon" aria-hidden="true"><use href="#icon-check"></use></svg>
-                        <span class="sr-only">Checklist и запуск</span>
-                      </a>
+                      <a class="button" href="/jobs/{{ run.job.id }}/start">Checklist и запуск</a>
                     {% else %}
-                      <form method="post" action="/jobs/{{ run.job.id }}/run">
-                        <button class="button secondary small icon-button" type="submit" title="Повторить с дельты" aria-label="Повторить с дельты">
-                          <svg class="button-icon" aria-hidden="true"><use href="#icon-repeat"></use></svg>
-                          <span class="sr-only">Повторить с дельты</span>
-                        </button>
+                      <form method="post" action="/runs/{{ run.id }}/retry">
+                        <button class="button" type="submit">Повторить с дельты</button>
                       </form>
                     {% endif %}
-                    <a class="button secondary small icon-button" href="/runs/{{ run.id }}" title="Детали" aria-label="Детали">
-                      <svg class="button-icon" aria-hidden="true"><use href="#icon-eye"></use></svg>
-                      <span class="sr-only">Детали</span>
-                    </a>
-                  </div>
-                {% else %}
-                  <span class="muted">—</span>
-                {% endif %}
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+                  {% endif %}
+                </div>
+              </section>
+            </div>
+          </article>
+        {% endfor %}
       </div>
     {% else %}
       <p class="empty-state">История запусков пока пуста.</p>

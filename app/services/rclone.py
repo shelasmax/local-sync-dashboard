@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shlex
 import shutil
 import subprocess
@@ -124,7 +125,7 @@ def estimate_size(endpoint: str, filters: list[str] | None = None, timeout_secon
         command.extend(["--filter", filter_rule])
     result = subprocess.run(command, capture_output=True, text=True, check=False, timeout=timeout_seconds)
     if result.returncode != 0:
-        raise RcloneError(result.stderr.strip() or f"rclone size завершился с кодом {result.returncode}")
+        raise RcloneError(summarize_rclone_error(result.stderr.strip(), returncode=result.returncode))
     try:
         payload = json.loads(result.stdout or "{}")
     except json.JSONDecodeError as exc:
@@ -134,6 +135,20 @@ def estimate_size(endpoint: str, filters: list[str] | None = None, timeout_secon
         files_total=int(payload.get("count", 0) or 0),
         command_preview=shlex.join(command),
     )
+
+
+def list_directories(endpoint: str, timeout_seconds: int = 30) -> tuple[list[str], str]:
+    ensure_available()
+    command = ["rclone", "lsf", endpoint, "--dirs-only", "--max-depth", "1"]
+    result = subprocess.run(command, capture_output=True, text=True, check=False, timeout=timeout_seconds)
+    if result.returncode != 0:
+        raise RcloneError(summarize_rclone_error(result.stderr.strip(), returncode=result.returncode))
+    entries = [
+        line.strip().rstrip("/")
+        for line in (result.stdout or "").splitlines()
+        if line.strip()
+    ]
+    return entries, shlex.join(command)
 
 
 def execute(command: list[str], timeout_seconds: int, cancel_event: Event | None = None) -> RcloneResult:
@@ -169,6 +184,96 @@ def execute_with_progress(
         progress_callback=progress_callback,
         cancel_event=cancel_event,
     )
+
+
+def summarize_rclone_error(output: str, *, returncode: int | None = None) -> str:
+    messages = _extract_rclone_messages(output)
+    condensed = " ".join(messages[:2]).strip() if messages else output.strip()
+    lowered = condensed.lower()
+    raw_lowered = output.lower()
+
+    if "directory not found" in lowered:
+        if "local file system at /home/" in raw_lowered:
+            return (
+                "Профиль Synology, похоже, указывает не на macOS mount path из `/Volumes`. "
+                "Исправьте корень профиля и не используйте путь вида `/home/...`."
+            )
+        if "/volumes/" in raw_lowered and "source root directory" in lowered:
+            match = re.search(r"local file system at ([^\" ]+)", output, flags=re.IGNORECASE)
+            if match:
+                candidate = match.group(1).strip()
+                base = candidate.rstrip("/").split("/")[-1]
+                parent = candidate.rstrip("/")
+                if base and parent.lower().endswith(f"/{base.lower()}/{base.lower()}"):
+                    return (
+                        "Source path дублирует последнюю папку профиля. "
+                        "Оставьте `source_path` пустым или поднимите корень профиля на уровень выше."
+                    )
+        if any(fragment in lowered for fragment in ("source root directory", "error listing", "failed to size", "failed to copy")):
+            return (
+                "Источник или подпапка не найдены в выбранном хранилище. "
+                "Проверьте профиль-источник и поле «Подпапка в источнике»."
+            )
+        return "Одна из директорий не найдена. Проверьте source path, target path и доступность нужного remote или mount path."
+
+    if "stale file handle" in lowered or "transport endpoint is not connected" in lowered:
+        return (
+            "Mount path стал недоступен после sleep, reconnect или переподключения сети. "
+            "Переподключите том в `/Volumes`, проверьте профиль и повторите запуск."
+        )
+
+    if "didn't find section in config file" in lowered or "didn't find section" in lowered or "config file" in lowered:
+        return "Нужный rclone remote не найден в конфигурации этого Mac. Проверьте setup и имя remote в профиле."
+
+    if "unauthorized" in lowered or "access denied" in lowered or "forbidden" in lowered or "401" in lowered or "403" in lowered:
+        return "Удаленное хранилище отклонило доступ. Проверьте авторизацию remote и права на bucket или папку."
+
+    if "timeout" in lowered or "temporarily unavailable" in lowered or "network is unreachable" in lowered or "connection refused" in lowered:
+        return "Похоже на сетевую ошибку или недоступный remote. Проверьте интернет, mount path и повторите запуск."
+
+    if condensed:
+        return condensed
+    if returncode is not None:
+        return f"rclone завершился с кодом {returncode}."
+    return "rclone завершился с ошибкой."
+
+
+def _extract_rclone_messages(output: str) -> list[str]:
+    messages: list[str] = []
+
+    for raw_line in output.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith("{") and line.endswith("}"):
+            try:
+                payload = json.loads(line)
+            except json.JSONDecodeError:
+                pass
+            else:
+                message = str(payload.get("msg", "")).strip()
+                if message:
+                    messages.append(message)
+                obj = str(payload.get("object", "")).strip()
+                if obj:
+                    messages.append(obj)
+                if message or obj:
+                    continue
+        messages.append(line)
+
+    if not messages:
+        for match in re.findall(r'"msg"\s*:\s*"([^"]+)"', output):
+            message = bytes(match, "utf-8").decode("unicode_escape").strip()
+            if message:
+                messages.append(message)
+
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for message in messages:
+        if message not in seen:
+            deduped.append(message)
+            seen.add(message)
+    return deduped
 
 
 def _stream_process(

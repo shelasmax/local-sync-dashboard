@@ -45,6 +45,8 @@
 - ссылку на секрет в Keychain
 - `options_json`
 
+Для `synology_share` значение `root_path_or_remote` должно быть уже смонтированным локальным путем macOS из `/Volumes`, а не `smb://...` и не путём на самой NAS. Например, для `smb://Synology_Max._smb._tcp.local/home/Ext_HDD` корректный профиль — `/Volumes/home/Ext_HDD` или `/Volumes/home` с `source_path=Ext_HDD` в задаче.
+
 ### `SyncJob`
 
 Описывает однонаправленную задачу:
@@ -119,8 +121,17 @@
 
 ## Текущее состояние продукта
 
+Релизный срез на `2026-04-15`: `v1.1.0`
+
 ### Уже есть
 
+- релиз `v1.1.0` с visual layer в формате `Control Room`
+- режимы `create / edit / clone` для задач без отдельного split-view
+- action-first карточки задач и запусков: `Исправить`, `Копировать как новую`, `Dry-run`, `Открыть лог`
+- route preview для формы задачи с `effective source/target`
+- browse API для выбора подпапок по local/Synology path и через `rclone lsf` для remote
+- защита от типовой Synology-ошибки: `/home/...` вместо `/Volumes/...`
+- защита от дублирования `source_path` поверх последнего сегмента корня профиля
 - русифицированный UI
 - setup-диагностика по локальным папкам и `rclone remotes`
 - создание, редактирование и удаление профилей
@@ -132,6 +143,7 @@
 - ручной запуск, pause/resume и запуск по расписанию
 - S3-специфичные поля профиля в UI
 - более понятные hints для локальных путей и `rclone remotes` на странице профилей
+- явные подсказки в `/profiles` и `/setup`, что для `Synology SMB` нужно использовать mount path из `/Volumes`, а не `smb://...`
 - последняя ошибка или успешный результат проверки видны прямо в строке профиля
 - richer hints по типам ошибок `S3`, `Yandex` и local path
 - action-oriented CTA в диагностике профиля: быстрые действия вместо одного только текста
@@ -143,16 +155,17 @@
 - pre-run checklist для длинных cloud job при составлении маршрута на `/jobs`
 - встроенный экран `/ops` с runbook по запуску, recovery, `launchd` и backup/restore
 - list-first раскладка на `/profiles` и `/jobs`: основной список в широких горизонтальных блоках, а форма создания спрятана в раскрывающийся блок сверху
-- единый icon-button паттерн для action-кнопок с hover-подсказками и логотипом в шапке на базе favicon
+- единый визуальный ритм shell и карточек на `/`, `/jobs`, `/runs`, `/profiles`, `/setup`, `/ops`
+- более компактный header и уменьшенные hero-блоки без отдельной вкладки статуса
 - favicon и базовая чистка адаптивной верстки таблиц
 
 ### Чего пока нет
 
-- явное отображение в UI, что cloud transfer идет через локальную машину
 - двусторонняя синхронизация
 - встроенная настройка `rclone remote` из интерфейса
-- richer health/ops dashboard
-- более заметный checklist рядом с самой кнопкой запуска
+- backup/restore без секретов
+- macOS notifications и более полный launchd-flow
+- optional relay-worker / VPS режим
 
 ## Операционные команды
 
@@ -196,7 +209,8 @@ rclone lsf "S3 Beget:bucket-name" --max-depth 1
 
 ## Что логично делать дальше
 
-1. Усилить recovery UX вокруг repeat-from-delta и добавить pre-run checklist для длинных cloud job.
-2. Улучшить диагностику профилей и cloud setup.
-3. Сделать заметнее в run-level UX, что cloud transfer идет через локальную машину.
-4. После этого доработать операционный слой: launchd, retention, backup/restore конфигурации.
+1. Добавить backup/restore конфигурации без секретов.
+2. Доработать операционный слой: notifications, `launchd`, перенос на другой `Mac`.
+3. Связать диагностику профилей с `Ops / Runbook` еще плотнее.
+4. Сделать guided setup для `rclone remote`.
+5. После этого вернуться к исследованию always-on relay / VPS как optional режима, а не части MVP.

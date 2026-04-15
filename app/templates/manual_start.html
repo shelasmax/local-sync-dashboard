@@ -1,16 +1,25 @@
 {% extends "base.html" %}
 
 {% block content %}
-  <section class="grid two align-start workspace-grid">
-    <article class="card manual-start-card">
-      <div class="section-header">
-        <h2>Проверка перед ручным запуском</h2>
-        <a class="button secondary small icon-button" href="/jobs" title="Назад к задачам" aria-label="Назад к задачам">
-          <svg class="button-icon" aria-hidden="true"><use href="#icon-back"></use></svg>
-          <span class="sr-only">Назад к задачам</span>
-        </a>
+  <section class="page-hero">
+    <div>
+      <p class="eyebrow">Manual Start</p>
+      <h2>Проверка перед ручным запуском</h2>
+      <p class="page-lead">Этот экран нужен для длинных маршрутов, где важно подтвердить readiness до реального `copy`.</p>
+    </div>
+    <div class="hero-actions">
+      <a class="button secondary" href="/jobs">Назад к задачам</a>
+    </div>
+  </section>
+
+  <section class="control-grid">
+    <article class="panel">
+      <div class="panel-header">
+        <div>
+          <span class="section-kicker">Route</span>
+          <h3>{{ job.name }}</h3>
+        </div>
       </div>
-      <p class="note">Задача: <strong>{{ job.name }}</strong></p>
       <dl class="key-value">
         <div><dt>Источник</dt><dd>{{ job.source_profile.name if job.source_profile else job.source_profile_id }} / {{ job.source_path or "." }}</dd></div>
         <div><dt>Назначение</dt><dd>{{ job.target_profile.name if job.target_profile else job.target_profile_id }} / {{ job.target_path or "." }}</dd></div>
@@ -18,59 +27,53 @@
         <div><dt>Расписание</dt><dd>{{ describe_schedule(job.schedule) }}</dd></div>
       </dl>
       {% if transfer_warning %}
-        <div class="callout callout-info recovery-callout">
-          <strong>Как пойдёт трафик</strong>
-          <p>{{ transfer_warning }}</p>
+        <div class="incident-panel incident-info compact-incident">
+          <div class="incident-main">
+            <span class="status-dot status-info"></span>
+            <div>
+              <strong>Как пойдёт трафик</strong>
+              <p>{{ transfer_warning }}</p>
+            </div>
+          </div>
         </div>
       {% endif %}
+    </article>
+
+    <article class="panel">
+      <div class="panel-header">
+        <div>
+          <span class="section-kicker">Next Action</span>
+          <h3>Перед нажатием «Запустить»</h3>
+        </div>
+      </div>
+      <div class="incident-panel incident-info compact-incident">
+        <div class="incident-main">
+          <span class="status-dot status-info"></span>
+          <div>
+            <strong>MVP-поведение запуска</strong>
+            <p>Приложение стартует однонаправленный `rclone copy` без destructive действий в target. Если длинный cloud run прервётся, recovery пойдёт через повторный `copy` с дельты.</p>
+          </div>
+        </div>
+      </div>
       {% if requires_checklist and pre_run_checklist %}
-        <div class="callout callout-warn recovery-callout">
-          <strong>Перед нажатием «Запустить copy сейчас» проверьте всё ниже</strong>
-          <ul class="plain-list compact-list recovery-list">
+        <div class="checklist-panel">
+          <strong>Проверьте перед запуском</strong>
+          <ul class="plain-list compact-list">
             {% for item in pre_run_checklist %}
               <li>{{ item }}</li>
             {% endfor %}
           </ul>
         </div>
       {% endif %}
-    </article>
-
-    <article class="card manual-start-card">
-      <div class="section-header">
-        <h2>Действия</h2>
-        <span class="note">Без delete в target</span>
-      </div>
-      <div class="callout callout-info recovery-callout">
-        <strong>MVP-поведение запуска</strong>
-        <p>Приложение стартует однонаправленный `rclone copy` без destructive действий в target. Если длинный cloud run прервётся, recovery пойдёт через повторный `copy` с дельты.</p>
-      </div>
-      <div class="actions manual-start-actions">
+      <div class="action-row">
         <form method="post" action="/jobs/{{ job.id }}/run">
-          <button class="button icon-button" type="submit" title="Запустить copy сейчас" aria-label="Запустить copy сейчас">
-            <svg class="button-icon" aria-hidden="true"><use href="#icon-play"></use></svg>
-            <span class="sr-only">Запустить copy сейчас</span>
-          </button>
+          <button class="button" type="submit">Запустить copy сейчас</button>
         </form>
         <form method="post" action="/jobs/{{ job.id }}/preview">
-          <button class="button secondary icon-button" type="submit" title="Сначала сделать Dry-run" aria-label="Сначала сделать Dry-run">
-            <svg class="button-icon" aria-hidden="true"><use href="#icon-eye"></use></svg>
-            <span class="sr-only">Сначала сделать Dry-run</span>
-          </button>
+          <button class="button secondary" type="submit">Сначала сделать Dry-run</button>
         </form>
-        <a class="button secondary icon-button" href="/ops" title="Открыть Ops / Runbook" aria-label="Открыть Ops / Runbook">
-          <svg class="button-icon" aria-hidden="true"><use href="#icon-book"></use></svg>
-          <span class="sr-only">Открыть Ops / Runbook</span>
-        </a>
+        <a class="button secondary" href="/ops">Открыть Ops / Runbook</a>
       </div>
-      <div class="checklist-panel checklist-panel-compact manual-start-panel">
-        <strong>Практический порядок</strong>
-        <ul class="plain-list compact-list">
-          <li>Если маршрут новый или большой, сначала сделайте `Dry-run`.</li>
-          <li>Если всё выглядит нормально, запускайте реальный `copy` из этого экрана.</li>
-          <li>Если run прервётся, вернитесь в `/runs` и повторите задачу с дельты.</li>
-        </ul>
-      </div>
-      <p class="note">Если сомневаетесь в маршруте или размере выгрузки, безопаснее сначала сделать `Dry-run` и короткий тест на подпапке.</p>
     </article>
   </section>
 {% endblock %}

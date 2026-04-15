@@ -9,97 +9,177 @@
     </script>
   {% endif %}
 
-  <section class="card">
-    <div class="section-header">
+  <section class="page-hero">
+    <div>
+      <p class="eyebrow">Run Detail</p>
       <h2>Запуск #{{ run.id }}</h2>
-      <span class="badge badge-{{ run.status }}">{{ status_label(run.status) }}</span>
+      <p class="page-lead">Run-centric экран: причина, маршрут и следующий шаг собраны сверху, а не прячутся внизу лога.</p>
     </div>
+    <div class="hero-actions">
+      <span class="badge badge-{{ run.status }}">{{ status_label(run.status) }}</span>
+      <a class="button secondary" href="/runs">Назад к истории</a>
+    </div>
+  </section>
 
-    {% if transfer_warning %}
-      <div class="callout callout-info">
-        <strong>Как шел трафик для этого запуска</strong>
-        <p>{{ transfer_warning }}</p>
+  <section class="run-detail-shell">
+    <article class="panel">
+      <div class="panel-header">
+        <div>
+          <span class="section-kicker">Status</span>
+          <h3>Что произошло</h3>
+        </div>
       </div>
-    {% endif %}
-
-    {% if active_run and active_run.run_id == run.id %}
-      <div class="live-status">
-        <div class="live-meta">
-          <span>{{ format_bytes(active_run.bytes_transferred) }} из {{ format_bytes(active_run.total_bytes) }}</span>
-          <span>{{ active_run.progress_percent }}%</span>
-          <span>{{ format_speed(active_run.speed) }}</span>
-          <span>{{ format_eta(active_run.eta_seconds) }}</span>
-        </div>
-        <div class="progress-bar" aria-label="Прогресс активного запуска">
-          <span style="width: {{ active_run.progress_percent }}%;"></span>
-        </div>
-        <div class="live-meta">
-          <span>Файлы: {{ active_run.files_transferred }} / {{ active_run.total_files }}</span>
-          <span>Проверки: {{ active_run.checks }} / {{ active_run.total_checks }}</span>
-          <span>Обновлено: {{ active_run.updated_at }}</span>
-        </div>
-        {% if active_run.active_items %}
-          <div class="transfer-list">
-            {% for item in active_run.active_items %}
-              <div class="transfer-item">
-                <strong>{{ item.name }}</strong>
-                <span>{{ item.percentage }}% · {{ format_speed(item.speed) }}{% if item.eta_seconds is not none %} · {{ format_eta(item.eta_seconds) }}{% endif %}</span>
-              </div>
-            {% endfor %}
+      {% if transfer_warning %}
+        <div class="incident-panel incident-info compact-incident">
+          <div class="incident-main">
+            <span class="status-dot status-info"></span>
+            <div>
+              <strong>Как шел трафик</strong>
+              <p>{{ transfer_warning }}</p>
+            </div>
           </div>
-        {% endif %}
+        </div>
+      {% endif %}
+
+      {% if active_run and active_run.run_id == run.id %}
+        <div class="live-status">
+          <div class="live-meta">
+            <span>{{ format_bytes(active_run.bytes_transferred) }} из {{ format_bytes(active_run.total_bytes) }}</span>
+            <span>{{ active_run.progress_percent }}%</span>
+            <span>{{ format_speed(active_run.speed) }}</span>
+            <span>{{ format_eta(active_run.eta_seconds) }}</span>
+          </div>
+          <div class="progress-bar" aria-label="Прогресс активного запуска">
+            <span style="width: {{ active_run.progress_percent }}%;"></span>
+          </div>
+          <div class="live-meta">
+            <span>Файлы: {{ active_run.files_transferred }} / {{ active_run.total_files }}</span>
+            <span>Проверки: {{ active_run.checks }} / {{ active_run.total_checks }}</span>
+            <span>Обновлено: {{ active_run.updated_at }}</span>
+          </div>
+        </div>
+      {% elif run.status == "interrupted" %}
+        <div class="incident-panel incident-warn">
+          <div class="incident-main">
+            <span class="status-dot status-interrupted"></span>
+            <div>
+              <strong>Запуск был прерван</strong>
+              <p>{{ run.summary }}</p>
+            </div>
+          </div>
+          <ul class="plain-list compact-list incident-list-items">
+            {% for item in interrupted_run_recovery_steps(run) %}
+              <li>{{ item }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% elif run.status in ["failed", "blocked"] %}
+        <div class="incident-panel incident-danger">
+          <div class="incident-main">
+            <span class="status-dot status-failed"></span>
+            <div>
+              <strong>Запуск завершился с ошибкой</strong>
+              <p>{{ run.summary }}</p>
+            </div>
+          </div>
+        </div>
+      {% else %}
+        <p class="panel-note">{{ run.summary }}</p>
+      {% endif %}
+
+      <dl class="key-value">
+        <div><dt>ID задачи</dt><dd>{{ run.job_id }}</dd></div>
+        <div><dt>Старт</dt><dd>{{ run.started_at }}</dd></div>
+        <div><dt>Завершение</dt><dd>{{ run.finished_at or "-" }}</dd></div>
+        <div><dt>Перенесено</dt><dd>{{ run.files_transferred }} файлов / {{ format_bytes(run.bytes_transferred) }}</dd></div>
+        <div><dt>Лог-файл</dt><dd>{{ run.log_path or "-" }}</dd></div>
+      </dl>
+    </article>
+
+    <article class="panel">
+      <div class="panel-header">
+        <div>
+          <span class="section-kicker">Route</span>
+          <h3>Как выглядел маршрут</h3>
+        </div>
       </div>
-    {% elif run.status == "interrupted" %}
-      <div class="callout callout-warn recovery-callout">
-        <strong>Запуск был прерван.</strong>
-        <p>Приложение сохранило последний известный прогресс. Recovery в этом проекте всегда идет через повторный `copy` только для оставшейся дельты; `re-attach` к старому процессу не используется.</p>
-        <ul class="plain-list compact-list recovery-list">
-          {% for item in interrupted_run_recovery_steps(run) %}
-            <li>{{ item }}</li>
-          {% endfor %}
-        </ul>
+      <div class="route-preview-grid single-column-grid">
+        <article class="route-preview-card">
+          <h4>Источник</h4>
+          <dl class="mini-kv">
+            <div><dt>Корень</dt><dd>{{ route_preview.source_root or "—" }}</dd></div>
+            <div><dt>Подпуть</dt><dd>{{ route_preview.source_path or "." }}</dd></div>
+            <div><dt>Итог</dt><dd><code class="break-any">{{ route_preview.source_effective or "—" }}</code></dd></div>
+          </dl>
+        </article>
+        <article class="route-preview-card">
+          <h4>Назначение</h4>
+          <dl class="mini-kv">
+            <div><dt>Корень</dt><dd>{{ route_preview.target_root or "—" }}</dd></div>
+            <div><dt>Подпуть</dt><dd>{{ route_preview.target_path or "." }}</dd></div>
+            <div><dt>Итог</dt><dd><code class="break-any">{{ route_preview.target_effective or "—" }}</code></dd></div>
+          </dl>
+        </article>
+      </div>
+      {% if route_preview.warnings %}
+        <div class="incident-panel incident-info compact-incident">
+          <div class="incident-main">
+            <span class="status-dot status-info"></span>
+            <div>
+              <strong>Подсказка по маршруту</strong>
+              <p>{{ route_preview.warnings | join(" ") }}</p>
+            </div>
+          </div>
+        </div>
+      {% endif %}
+    </article>
+
+    <article class="panel run-actions-panel">
+      <div class="panel-header">
+        <div>
+          <span class="section-kicker">Next Action</span>
+          <h3>Что делать дальше</h3>
+        </div>
+      </div>
+      <div class="action-stack">
         {% if run.job %}
-          <div class="actions recovery-actions">
+          <a class="button" href="/jobs?edit_job_id={{ run.job.id }}">Исправить задачу</a>
+          <a class="button secondary" href="/jobs?clone_job_id={{ run.job.id }}">Копировать как новую</a>
+          {% if run.status == "interrupted" %}
             {% if job_requires_manual_start_checklist(run.job) %}
-              <a class="button secondary small icon-button" href="/jobs/{{ run.job.id }}/start" title="Открыть checklist перед повтором" aria-label="Открыть checklist перед повтором">
-                <svg class="button-icon" aria-hidden="true"><use href="#icon-check"></use></svg>
-                <span class="sr-only">Открыть checklist перед повтором</span>
-              </a>
+              <a class="button secondary" href="/jobs/{{ run.job.id }}/start">Checklist и запуск</a>
             {% else %}
               <form method="post" action="/jobs/{{ run.job.id }}/run">
-                <button class="button secondary small icon-button" type="submit" title="Повторить задачу" aria-label="Повторить задачу">
-                  <svg class="button-icon" aria-hidden="true"><use href="#icon-repeat"></use></svg>
-                  <span class="sr-only">Повторить задачу</span>
-                </button>
+                <button class="button secondary" type="submit">Повторить задачу</button>
               </form>
             {% endif %}
-            <a class="button secondary small icon-button" href="/runs" title="Назад к истории" aria-label="Назад к истории">
-              <svg class="button-icon" aria-hidden="true"><use href="#icon-back"></use></svg>
-              <span class="sr-only">Назад к истории</span>
-            </a>
-          </div>
+          {% endif %}
         {% endif %}
+        <a class="button secondary" href="/runs">Назад к истории</a>
       </div>
-    {% endif %}
+    </article>
+  </section>
 
-    <dl class="key-value">
-      <div><dt>ID задачи</dt><dd>{{ run.job_id }}</dd></div>
-      <div><dt>Старт</dt><dd>{{ run.started_at }}</dd></div>
-      <div><dt>Завершение</dt><dd>{{ run.finished_at or "-" }}</dd></div>
-      <div><dt>Перенесено</dt><dd>{{ run.files_transferred }} файлов / {{ format_bytes(run.bytes_transferred) }}</dd></div>
-      <div><dt>Лог-файл</dt><dd>{{ run.log_path or "-" }}</dd></div>
-    </dl>
-
-    <h3>Итог</h3>
-    <pre>{{ run.summary }}</pre>
-
-    <h3>Команда</h3>
-    <pre>{{ run.command_preview or "-" }}</pre>
-
-    <h3>stdout</h3>
-    <pre>{{ run.stdout or "-" }}</pre>
-
-    <h3>stderr</h3>
-    <pre>{{ run.stderr or "-" }}</pre>
+  <section class="panel">
+    <div class="panel-header">
+      <div>
+        <span class="section-kicker">Logs</span>
+        <h3 id="run-log">Команда и вывод</h3>
+      </div>
+    </div>
+    <div class="stack log-stack">
+      <div>
+        <h4>Команда</h4>
+        <pre>{{ run.command_preview or "-" }}</pre>
+      </div>
+      <div>
+        <h4>stdout</h4>
+        <pre>{{ run.stdout or "-" }}</pre>
+      </div>
+      <div>
+        <h4>stderr</h4>
+        <pre>{{ run.stderr or "-" }}</pre>
+      </div>
+    </div>
   </section>
 {% endblock %}

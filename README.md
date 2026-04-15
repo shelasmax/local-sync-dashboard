@@ -1,5 +1,7 @@
 # Local Sync Dashboard
 
+Текущий релиз: `v1.1.0`
+
 Локальный веб-инструмент для macOS, который помогает безопасно настраивать и запускать однонаправленные выгрузки между:
 
 - `S3` и `S3-compatible` хранилищами
@@ -9,6 +11,17 @@
 - локальными папками `iCloud Drive` и `Google Drive for Desktop`
 
 Проект задуман как удобная локальная панель управления поверх `rclone`: приложение хранит конфигурацию, показывает статусы, запускает задачи по расписанию и сохраняет историю запусков.
+
+## Релиз `v1.1.0`
+
+- интерфейс перестроен в `Control Room`-стиле: `Status / Route / Next Action`
+- задачи теперь можно редактировать и клонировать прямо из списка и из истории запусков
+- форма задач показывает `effective source/target route` до запуска
+- для source/target появились быстрые browse-подсказки по подпапкам
+- для Synology маршрутов появилась защита от типовой ошибки `/home/...` и от дублирования `source_path`
+- repeated failed runs теперь читаются как operational incident, а не как набор разрозненных логов
+- shell и основные экраны приведены к единому компактному ритму: `/`, `/jobs`, `/runs`, `/profiles`, `/setup`, `/ops`
+- вкладка `Статус` убрана из основной навигации, operational readiness перенесен на главную
 
 ## Что уже умеет MVP
 
@@ -21,11 +34,13 @@
 - показывать action-oriented CTA в диагностике профиля: `Открыть setup`, `Исправить профиль`, `Проверить снова`
 - запускать однонаправленные задачи в режиме `copy`
 - запускать задачи вручную и по расписанию
+- редактировать существующие задачи и создавать новые как копию проблемного маршрута
 - ставить задачи на паузу и возобновлять их
 - удалять задачи из интерфейса
 - сохранять историю запусков и логи
 - показывать live progress для активных app-managed задач
 - делать `dry-run preview` для сохраненной задачи перед реальным запуском
+- показывать `effective route` и блокировать заведомо ошибочные Synology маршруты до реального запуска
 - сохранять последний известный runtime state активной задачи
 - после рестарта переводить незавершенные `running`-запуски в `interrupted`
 - давать recovery flow для `interrupted` запусков из `/runs` и `/jobs`
@@ -129,6 +144,20 @@ uvicorn app.main:app --reload
 
 В MVP ожидается уже смонтированная папка SMB/NFS. Приложение не монтирует шару само.
 
+Для профиля нужно указывать локальный путь macOS из `/Volumes`, а не `smb://...` и не внутренний путь NAS.
+
+Пример:
+
+- Finder / Connect to Server: `smb://Synology_Max._smb._tcp.local/home/Ext_HDD`
+- в профиле приложения: `/Volumes/home/Ext_HDD`
+- или root профиля: `/Volumes/home`, а в задаче `source_path=Ext_HDD`
+
+Неправильно:
+
+- `smb://Synology_Max._smb._tcp.local/home/Ext_HDD`
+- `/home`
+- `/home/Ext_HDD`
+
 ### S3 Remote
 
 Профиль использует уже существующий `rclone remote`. В UI можно отдельно редактировать:
@@ -170,7 +199,9 @@ uvicorn app.main:app --reload
 
 - [docs/PROJECT.md](/Users/maksim/Documents/Projects/Mini%20Tasks/S3_Synology-to-Yandex_DIsk/docs/PROJECT.md) — обзор архитектуры и текущего состояния проекта
 - [docs/BACKLOG.md](/Users/maksim/Documents/Projects/Mini%20Tasks/S3_Synology-to-Yandex_DIsk/docs/BACKLOG.md) — backlog с приоритетами
+- [CHANGELOG.md](/Users/maksim/Documents/Projects/Mini%20Tasks/S3_Synology-to-Yandex_DIsk/CHANGELOG.md) — зафиксированные релизные изменения
 - [docs/plans/2026-04-13-job-progress-visibility.md](/Users/maksim/Documents/Projects/Mini%20Tasks/S3_Synology-to-Yandex_DIsk/docs/plans/2026-04-13-job-progress-visibility.md) — план по progress bar, ETA и live-статусам задач
+- [docs/plans/2026-04-15-vps-relay-research.md](/Users/maksim/Documents/Projects/Mini%20Tasks/S3_Synology-to-Yandex_DIsk/docs/plans/2026-04-15-vps-relay-research.md) — исследование варианта с always-on relay / VPS вне MVP
 - [agents.md](/Users/maksim/Documents/Projects/Mini%20Tasks/S3_Synology-to-Yandex_DIsk/agents.md) — локальные правила для агентной разработки
 - `/ops` — встроенный операционный runbook по ночным запускам, recovery, `launchd` и backup/restore
 
@@ -195,9 +226,9 @@ rclone lsf "S3 Beget:bucket-name" --max-depth 1
 
 Проект уже пригоден для реальной локальной эксплуатации, но несколько вещей еще в работе:
 
-- более богатая диагностика ошибок
-- еще более явные cloud-to-cloud подсказки в run-level UX и при запуске вручную
-- более сильный recovery UX вокруг repeat-from-delta и pre-run checklist для длинных задач
+- backup/restore конфигурации без секретов
+- нотификации и более практичный `launchd`-операционный слой
+- guided setup для `rclone remote`
 
 ## Ограничения
 

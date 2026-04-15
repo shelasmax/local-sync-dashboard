@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import unittest
 
-from app.services.rclone import parse_progress_line
+from app.services.rclone import parse_progress_line, summarize_rclone_error
 
 
 class RcloneProgressParsingTest(unittest.TestCase):
@@ -49,6 +49,51 @@ class RcloneProgressParsingTest(unittest.TestCase):
 
     def test_parse_progress_line_ignores_non_json(self):
         self.assertIsNone(parse_progress_line("plain text"))
+
+    def test_summarize_rclone_error_for_missing_source_directory(self):
+        output = "\n".join(
+            [
+                json.dumps({"level": "error", "msg": "error listing source root directory: directory not found"}),
+                json.dumps({"level": "notice", "msg": "Failed to size with 2 errors: last error was: directory not found"}),
+            ]
+        )
+
+        summary = summarize_rclone_error(output, returncode=3)
+
+        self.assertIn("Источник или подпапка не найдены", summary)
+
+    def test_summarize_rclone_error_for_missing_remote(self):
+        output = 'Failed to create file system for "missing:": didn\'t find section in config file'
+
+        summary = summarize_rclone_error(output)
+
+        self.assertIn("remote не найден", summary)
+
+    def test_summarize_rclone_error_for_synology_home_path(self):
+        output = json.dumps(
+            {
+                "level": "error",
+                "msg": "error reading source root directory: directory not found",
+                "object": "Local file system at /home/Ext_HDD",
+            }
+        )
+
+        summary = summarize_rclone_error(output, returncode=3)
+
+        self.assertIn("`/Volumes`", summary)
+
+    def test_summarize_rclone_error_for_duplicated_synology_segment(self):
+        output = json.dumps(
+            {
+                "level": "error",
+                "msg": "error reading source root directory: directory not found",
+                "object": "Local file system at /Volumes/home/Ext_HDD/Ext_HDD",
+            }
+        )
+
+        summary = summarize_rclone_error(output, returncode=3)
+
+        self.assertIn("дублирует", summary)
 
 
 if __name__ == "__main__":
