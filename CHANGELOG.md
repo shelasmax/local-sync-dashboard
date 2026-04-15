@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.0.0 - 2026-04-15
+
+### Service-mode hardening for macOS launchd
+
+- Formalized `launchd` as a real operational mode for this Mac: the app now has a documented service-copy flow outside `~/Documents`, which avoids the macOS privacy/TCC failures that prevented background auto-start from working reliably.
+- Added `scripts/update_launchd_service.sh` to sync repo code into the service copy, preserve `service/var` state, refresh the service virtualenv, and restart the `com.localsync.dashboard` LaunchAgent on port `8000`.
+- Added `scripts/launchd_status.sh` to inspect the active LaunchAgent, show PID/listener state, run a local HTTP smoke check, and tail service logs from the managed copy.
+- Fixed operational documentation and agent instructions around the canonical local port: `127.0.0.1:8000` is now explicitly the project standard for manual runbooks, service scripts, and launchd guidance.
+
 ## v1.3.0 - 2026-04-15
 
 ### Diagnostics-to-ops and operational screen hardening

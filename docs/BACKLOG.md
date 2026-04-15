@@ -5,7 +5,7 @@
 ### 1. Backup / restore конфигурации приложения без секретов
 
 Почему важно:
-- это самый сильный эксплуатационный пробел после `v1.3.0`
+- это самый сильный эксплуатационный пробел после `v2.0.0`
 - упростит перенос на другой `Mac` и восстановление локальной установки
 
 Что должно быть:
@@ -22,8 +22,7 @@
 
 Что должно быть:
 - macOS notifications о `success`, `failed`, `interrupted`
-- более практичные `launchd`-сценарии и сервисный статус
-- понятный migration flow на другой `Mac`
+- migration flow service-копии и launchd-конфигурации на другой `Mac`
 
 ### 3. Guided setup для `rclone remote`
 
@@ -109,6 +108,9 @@
 - упрощенный shell: более низкий header, более компактные hero-блоки и единый ритм карточек на `/`, `/jobs`, `/runs`, `/profiles`, `/setup`, `/ops`
 - перенос operational readiness на дэшборд вместо отдельной вкладки статуса
 - встроенный экран `/ops` с базовым operational runbook
+- service-copy flow для `launchd` вне `~/Documents`, чтобы автоподъём на macOS работал без TCC-ошибок
+- `scripts/update_launchd_service.sh` для синхронизации service-копии и controlled restart `launchd`-агента
+- `scripts/launchd_status.sh` для проверки loaded/running state агента, listener на `127.0.0.1:8000` и хвоста service-логов
 - явные подсказки в `/profiles`, `/setup` и docs, что `Synology SMB` нужно заводить через локальный путь `/Volumes/...`, а не через `smb://...`
 - helper-блоки в `/profiles`, ведущие из типовых diagnostic проблем в конкретные сценарии `/ops`
 - counters на `/profiles` и более action-oriented profile helper UX

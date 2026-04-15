@@ -121,7 +121,7 @@
 
 ## Текущее состояние продукта
 
-Релизный срез на `2026-04-15`: `v1.3.0`
+Релизный срез на `2026-04-15`: `v2.0.0`
 
 ### Уже есть
 
@@ -168,15 +168,17 @@
 - более компактный header и уменьшенные hero-блоки без отдельной вкладки статуса
 - favicon и базовая чистка адаптивной верстки таблиц
 - автоматическая retention run history по дням с удалением старых локальных логов
+- устойчивый `launchd` service-mode через service-копию вне `~/Documents`, чтобы macOS background auto-start не ломался на TCC/privacy ограничениях
+- operational-скрипт `scripts/update_launchd_service.sh` для выката repo-кода в service-копию и controlled restart LaunchAgent
+- operational-скрипт `scripts/launchd_status.sh` для проверки loaded/running state агента, PID, listener и хвоста service-логов
 
 ### Чего пока нет
 
 - двусторонняя синхронизация
 - встроенная настройка `rclone remote` из интерфейса
 - backup/restore без секретов
-- macOS notifications и более полный launchd-flow
+- macOS notifications и более полный migration flow service-копии / `launchd` на другой `Mac`
 - optional relay-worker / VPS режим
-- более законченный migration flow на другой `Mac`
 
 ## Операционные команды
 
@@ -202,6 +204,13 @@ rclone about yadisk:
 rclone lsf "S3 Beget:bucket-name" --max-depth 1
 ```
 
+### Полезные service-mode команды
+
+```bash
+./scripts/update_launchd_service.sh
+./scripts/launchd_status.sh
+```
+
 ## Хранение состояния
 
 - БД приложения: `var/app.db`
@@ -224,5 +233,5 @@ rclone lsf "S3 Beget:bucket-name" --max-depth 1
 1. Вынести полную историю запусков в отдельный archive-экран и оставить на `/`, `/jobs`, `/runs` только operational slices.
 2. Добавить pagination и ручную cleanup-очистку локальной run history как дополнение к retention.
 3. После этого вернуться к backup/restore конфигурации без секретов.
-4. Доработать операционный слой: notifications, `launchd`, перенос на другой `Mac`.
+4. Доработать операционный слой: notifications и migration flow service-mode на другой `Mac`.
 5. Связать диагностику профилей с `Ops / Runbook` еще плотнее и затем сделать guided setup для `rclone remote`.

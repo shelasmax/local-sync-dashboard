@@ -81,6 +81,8 @@
       <div class="checklist-panel compact-checklist">
         <ul class="plain-list compact-list">
           <li>Подставьте абсолютные пути к проекту, `.venv` и `var/`.</li>
+          <li>Канонический локальный порт проекта: `8000`; если меняете его вручную, обновите и plist, и URL открытия UI.</li>
+          <li>Для service-copy эксплуатации используйте `./scripts/update_launchd_service.sh`, а для быстрой диагностики агента и логов — `./scripts/launchd_status.sh`.</li>
           <li>Скопируйте plist в `~/Library/LaunchAgents/`.</li>
           <li>Загрузите агент через `launchctl load` или перезайдите в сессию macOS.</li>
           <li>Проверьте логи, если сервис не стартует.</li>
