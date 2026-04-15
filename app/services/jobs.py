@@ -406,6 +406,13 @@ class JobRunner:
         self.started = True
         self.refresh_schedules()
         self.cleanup_old_runs()
+        self.scheduler.add_job(
+            self._reap_orphan_runs,
+            "interval",
+            minutes=5,
+            id="orphan-run-reaper",
+            replace_existing=True,
+        )
 
     def shutdown(self) -> None:
         if self.started:
@@ -483,6 +490,7 @@ class JobRunner:
             session.commit()
 
     def _execute_job(self, job_id: int, initiated_by: str, cancel_event: Event) -> None:
+        run_id: int | None = None
         try:
             with SessionLocal() as session:
                 app_settings = init_settings(session)
@@ -531,6 +539,7 @@ class JobRunner:
                 session.add(run)
                 session.commit()
                 session.refresh(run)
+                run_id = run.id
 
                 self._initialize_snapshot(
                     job_id=job_id,
@@ -557,6 +566,16 @@ class JobRunner:
                         run.stderr = str(exc)
                         run.finished_at = datetime.now(UTC)
                         session.commit()
+                        self._finalize_snapshot(job_id, run.status, run.summary, 0, 0)
+                        return
+                    except Exception as exc:
+                        result = None
+                        run.status = RunStatus.FAILED.value
+                        run.summary = f"Неожиданная ошибка: {exc}"
+                        run.stderr = str(exc)
+                        run.finished_at = datetime.now(UTC)
+                        session.commit()
+                        self._finalize_snapshot(job_id, run.status, run.summary, 0, 0)
                         return
 
                     combined = "\n".join(part for part in [result.stdout, result.stderr] if part)
@@ -590,10 +609,26 @@ class JobRunner:
                     run.summary = summarize_rclone_error(combined, returncode=result.returncode)
                 session.commit()
                 self._finalize_snapshot(job_id, run.status, run.summary, result.bytes_transferred, result.files_transferred)
+        except Exception:
+            if run_id is not None:
+                try:
+                    self._mark_run_failed(run_id)
+                except Exception:
+                    pass
         finally:
             with self.lock:
                 self.active_runs.pop(job_id, None)
             self.cleanup_old_runs()
+
+    def _mark_run_failed(self, run_id: int) -> None:
+        with SessionLocal() as session:
+            run = session.get(RunHistory, run_id)
+            if not run or run.status != RunStatus.RUNNING.value:
+                return
+            run.status = RunStatus.FAILED.value
+            run.summary = "Неожиданная ошибка во время выполнения."
+            run.finished_at = datetime.now(UTC)
+            session.commit()
 
     def cleanup_old_runs(self) -> None:
         with SessionLocal() as session:
@@ -724,13 +759,40 @@ class JobRunner:
             run.finished_at = datetime.now(UTC)
             run.bytes_transferred = max(run.bytes_transferred, snapshot.bytes_transferred)
             run.files_transferred = max(run.files_transferred, snapshot.files_transferred)
-            progress_summary = (
+            run.summary = (
                 f"Запуск был прерван. Последний известный прогресс: "
                 f"{snapshot.files_transferred}/{snapshot.total_files or '?'} файлов, "
                 f"{snapshot.bytes_transferred}/{snapshot.total_bytes or '?'} байт."
             )
-            run.summary = progress_summary
             session.commit()
+
+    def _reap_orphan_runs(self) -> None:
+        """Periodic check: mark DB runs as INTERRUPTED if no active thread owns them."""
+        with self.lock:
+            active_job_ids = set(self.active_runs.keys())
+
+        with SessionLocal() as session:
+            orphan_runs = session.scalars(
+                select(RunHistory).where(
+                    RunHistory.status == RunStatus.RUNNING.value,
+                )
+            ).all()
+            reaped = False
+            for run in orphan_runs:
+                if run.job_id in active_job_ids:
+                    continue
+                run.status = RunStatus.INTERRUPTED.value
+                run.summary = "Задача потеряна: процесс rclone завершился, но статус не был обновлен."
+                run.finished_at = datetime.now(UTC)
+                reaped = True
+            if reaped:
+                session.commit()
+
+        settings.ensure_runtime_dirs()
+        for snapshot_file in settings.runtime_dir.glob("run-*.json"):
+            snapshot = self._load_snapshot(snapshot_file)
+            if snapshot and snapshot.job_id not in active_job_ids:
+                snapshot_file.unlink(missing_ok=True)
 
     def _snapshot_path(self, snapshot: RunSnapshot) -> Path:
         identifier = snapshot.run_id if snapshot.run_id is not None else f"job-{snapshot.job_id}"

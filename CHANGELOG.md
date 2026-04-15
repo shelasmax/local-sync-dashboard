@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.2.0 - 2026-04-15
+
+### Resilience: orphan-run detection and process cleanup
+
+- **Orphan-run reaper**: periodic APScheduler job (`_reap_orphan_runs`) runs every 5 minutes and marks DB rows stuck in `running` status as `interrupted` when no active thread owns them. Also cleans stale `var/runtime/*.json` snapshot files. Previously, a dead rclone process could leave a run as `running` forever — only recovered on uvicorn restart.
+- **SIGKILL grace period**: `_stream_process` now sends `SIGTERM`, waits 5 seconds, then sends `SIGKILL` if the process refuses to die (e.g. D-state from stale NFS/SMB mount). Prevents zombie rclone processes from blocking the job slot indefinitely.
+- **Broad exception handling in `_execute_job`**: unexpected exceptions (OSError, selector errors, etc.) now mark the run as `FAILED` in the database instead of silently leaving it as `running`. Added outer `try/except` with `_mark_run_failed()` as a safety net.
+- **Safe I/O in stream loop**: `readline()` and `stream.read()` wrapped in `try/except OSError/ValueError` to handle half-closed file descriptors. Selector cleanup moved to `finally` block to prevent descriptor leaks.
+
 ## v1.1.1 - 2026-04-15
 
 - Fixed UI blocking during active rclone jobs: replaced `window.location.reload()` with AJAX polling to `/api/runtime/jobs` on `/jobs`, `/runs`, `/run_detail` pages. Full page reload now only triggers when a job transitions from active to finished.

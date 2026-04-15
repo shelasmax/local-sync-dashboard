@@ -86,6 +86,7 @@
 
 ## Уже сделано
 
+- релиз `v1.2.0`: orphan-run reaper (каждые 5 мин), SIGKILL grace period, широкая обработка исключений в `_execute_job`, безопасный I/O в stream-цикле
 - релиз `v1.1.0`: `Control Room` с блоками `Status / Route / Next Action`
 - edit/clone flow для задач прямо из `/jobs` и `/runs`
 - browse API и быстрый выбор подпапок для формы задачи
@@ -110,6 +111,10 @@
 - базовая чистка адаптивной верстки и cleanup тестового harness без `ResourceWarning`
 - AJAX-поллинг `/api/runtime/jobs` вместо `location.reload()` на `/jobs`, `/runs`, `/run_detail`: устраняет блокировку UI при активных rclone-задачах
 - TTL-кеш (30с) для `collect_setup_diagnostics()`: устраняет повторные `rclone listremotes` и сканирование `/Volumes` на каждый рендер страницы
+- orphan-run reaper: периодическая (каждые 5 мин) проверка зависших `running`-запусков без живого потока, пометка как `interrupted`, чистка stale snapshot-файлов
+- SIGKILL grace period в `_stream_process`: `SIGTERM` → 5 с ожидание → `SIGKILL` для процессов в D-state (stale SMB/NFS mount)
+- широкая обработка исключений в `_execute_job`: неперехваченные исключения записывают `FAILED` в БД вместо forever-`running`
+- безопасный I/O в stream-цикле: `readline()`/`read()` обёрнуты в `try/except`, selector cleanup в `finally`
 
 ## Отдельно вне MVP
 

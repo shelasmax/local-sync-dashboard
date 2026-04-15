@@ -276,6 +276,9 @@ def _extract_rclone_messages(output: str) -> list[str]:
     return deduped
 
 
+_GRACE_SECONDS = 5
+
+
 def _stream_process(
     process: subprocess.Popen[str],
     command: list[str],
@@ -285,6 +288,7 @@ def _stream_process(
 ) -> RcloneResult:
     canceled = False
     timed_out = False
+    killed = False
     stdout_chunks: list[str] = []
     stderr_chunks: list[str] = []
     deadline = monotonic() + timeout_seconds
@@ -295,60 +299,104 @@ def _stream_process(
     if process.stderr:
         selector.register(process.stderr, selectors.EVENT_READ, data="stderr")
 
-    while True:
-        if cancel_event and cancel_event.is_set() and process.poll() is None:
-            canceled = True
-            process.terminate()
-        if monotonic() >= deadline and process.poll() is None:
-            timed_out = True
-            process.terminate()
-
-        if not selector.get_map():
-            if process.poll() is not None:
-                break
-            continue
-
+    def _ensure_dead() -> None:
+        """SIGTERM → grace period → SIGKILL for stubborn processes."""
+        nonlocal killed
+        if process.poll() is not None:
+            return
+        process.terminate()
         try:
-            events = selector.select(timeout=1)
-        except OSError as exc:
-            raise RcloneError(str(exc)) from exc
+            process.wait(timeout=_GRACE_SECONDS)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            killed = True
 
-        if not events and process.poll() is not None:
-            for key in list(selector.get_map().values()):
-                stream = key.fileobj
-                remainder = stream.read()
-                if remainder:
-                    if key.data == "stdout":
-                        stdout_chunks.append(remainder)
-                    else:
-                        stderr_chunks.append(remainder)
-                selector.unregister(stream)
-                stream.close()
-            break
+    try:
+        while True:
+            if cancel_event and cancel_event.is_set() and process.poll() is None:
+                canceled = True
+                _ensure_dead()
+            if monotonic() >= deadline and process.poll() is None:
+                timed_out = True
+                _ensure_dead()
 
-        for key, _ in events:
-            stream = key.fileobj
-            line = stream.readline()
-            if line == "":
-                selector.unregister(stream)
-                stream.close()
+            if not selector.get_map():
+                if process.poll() is not None:
+                    break
                 continue
-            if key.data == "stdout":
-                stdout_chunks.append(line)
-            else:
-                stderr_chunks.append(line)
-            if progress_callback:
-                progress = parse_progress_line(line)
-                if progress:
-                    progress_callback(progress)
 
-    selector.close()
-    process.wait()
+            try:
+                events = selector.select(timeout=1)
+            except OSError:
+                break
+
+            if not events and process.poll() is not None:
+                for key in list(selector.get_map().values()):
+                    stream = key.fileobj
+                    try:
+                        remainder = stream.read()
+                    except (OSError, ValueError):
+                        remainder = ""
+                    if remainder:
+                        if key.data == "stdout":
+                            stdout_chunks.append(remainder)
+                        else:
+                            stderr_chunks.append(remainder)
+                    try:
+                        selector.unregister(stream)
+                    except KeyError:
+                        pass
+                    stream.close()
+                break
+
+            for key, _ in events:
+                stream = key.fileobj
+                try:
+                    line = stream.readline()
+                except (OSError, ValueError):
+                    try:
+                        selector.unregister(stream)
+                    except KeyError:
+                        pass
+                    stream.close()
+                    continue
+                if line == "":
+                    try:
+                        selector.unregister(stream)
+                    except KeyError:
+                        pass
+                    stream.close()
+                    continue
+                if key.data == "stdout":
+                    stdout_chunks.append(line)
+                else:
+                    stderr_chunks.append(line)
+                if progress_callback:
+                    progress = parse_progress_line(line)
+                    if progress:
+                        progress_callback(progress)
+    finally:
+        for key in list(selector.get_map().values()) if selector.get_map() else []:
+            try:
+                selector.unregister(key.fileobj)
+            except KeyError:
+                pass
+            try:
+                key.fileobj.close()
+            except (OSError, ValueError):
+                pass
+        selector.close()
+        try:
+            process.wait(timeout=_GRACE_SECONDS)
+        except subprocess.TimeoutExpired:
+            process.kill()
 
     stdout = "".join(stdout_chunks)
     stderr = "".join(stderr_chunks)
     if timed_out:
         stderr = "\n".join(part for part in [stderr, f"Timed out after {timeout_seconds} seconds."] if part)
+    if killed:
+        stderr = "\n".join(part for part in [stderr, "Process killed (SIGKILL) after refusing to terminate."] if part)
 
     combined = "\n".join(part for part in [stdout, stderr] if part)
     bytes_transferred, files_transferred = _extract_stats(combined)
