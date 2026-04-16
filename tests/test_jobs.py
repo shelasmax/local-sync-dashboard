@@ -24,11 +24,14 @@ from app.services.jobs import (
     RunDeleteError,
     RunRecoveryError,
     RunSnapshot,
+    build_run_summary,
     cleanup_runs,
     delete_run,
     delete_job,
+    format_duration_compact,
     preview_job,
     retry_run,
+    update_app_settings,
     validate_job_route,
     validate_job_endpoints,
 )
@@ -221,7 +224,36 @@ class JobsServiceTest(unittest.TestCase):
 
         with self.assertRaises(JobConflictError):
             from app.services.jobs import create_job
+
             create_job(self.session, duplicate)
+
+    def test_build_run_summary_reports_timeout_with_actual_progress(self):
+        result = RcloneResult(
+            returncode=124,
+            stdout="",
+            stderr='{"msg":"progress"}\nTimed out after 21600 seconds.',
+            command_preview="rclone copy ...",
+            bytes_transferred=81986264202,
+            files_transferred=24217,
+        )
+
+        summary = build_run_summary(result)
+
+        self.assertIn("Превышен лимит времени запуска", summary)
+        self.assertIn("6 ч", summary)
+        self.assertIn("24217", summary)
+        self.assertIn("76.4 GiB", summary)
+
+    def test_format_duration_compact_uses_hours_for_long_timeout(self):
+        self.assertEqual(format_duration_compact(21600), "6 ч")
+
+    def test_update_app_settings_updates_timeout(self):
+        updated = update_app_settings(self.session, default_run_timeout_seconds=28800)
+
+        self.assertEqual(updated.default_run_timeout_seconds, 28800)
+        refreshed = self.session.get(type(updated), 1)
+        assert refreshed is not None
+        self.assertEqual(refreshed.default_run_timeout_seconds, 28800)
 
     def test_build_copy_command_supports_advanced_runtime_flags(self):
         command = build_copy_command(

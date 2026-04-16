@@ -86,6 +86,7 @@ app/config.py         ← настройки (LOCAL_SYNC_DATA_DIR, var/, Keychai
 ### Двухуровневое состояние долгих задач
 - **`var/app.db`** — финальные записи `RunHistory` (статус, байты, файлы, лог-путь)
 - **`var/runtime/{run_id}.json`** — `RunSnapshot` для активного задания: байты, скорость, ETA, active items. Обновляется каждые 1–2 с. Пережит рестарт uvicorn — незавершённые runs помечаются `interrupted`, доступны для retry.
+- Для вопросов вида “что уже выгрузилось, а что осталось после серии retry” сначала смотреть в live runtime snapshot текущего run: он лучше отражает текущую дельту, чем summary старых failed/interrupted запусков.
 
 ### Жизненный цикл задания
 1. `JobRunner.sync_job()` регистрирует APScheduler-триггер.
@@ -99,6 +100,7 @@ app/config.py         ← настройки (LOCAL_SYNC_DATA_DIR, var/, Keychai
 - На уровне job уже поддерживаются `rclone_transfers`, `rclone_checkers`, `rclone_fast_list`.
 - Это предназначено в первую очередь для long-running маршрутов с большим числом маленьких файлов, например `Synology SMB -> Yandex Disk`.
 - Без явной причины не поднимать parallelism агрессивно: сначала разумный уровень вроде `transfers=8`, `checkers=16`, затем только смотреть на эффект.
+- Начиная с `v2.1.1`, default timeout одного app-managed run можно поднимать через `/ops`; timed-out run должен явно показывать именно timeout и реально перенесённый объём, а не ранний progress-snippet.
 - Следующий продуктовый шаг в этой зоне — не новые ad-hoc флаги в коде, а `profile defaults + job override`.
 
 ### UI-конвенции (не ломать без причины)

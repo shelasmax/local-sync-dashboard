@@ -7,6 +7,7 @@ from pathlib import Path
 from threading import Event, Lock, Thread
 from time import sleep
 import shlex
+import re
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy import delete, func, select
@@ -27,6 +28,7 @@ from app.services.rclone import (
     execute,
     execute_with_progress,
     is_available,
+    is_timeout_output,
     summarize_rclone_error,
 )
 from app.services.scheduling import build_trigger
@@ -46,6 +48,72 @@ def init_settings(session) -> AppSettings:
         session.commit()
         session.refresh(app_settings)
     return app_settings
+
+
+def update_app_settings(
+    session,
+    *,
+    default_run_timeout_seconds: int | None = None,
+) -> AppSettings:
+    app_settings = init_settings(session)
+    if default_run_timeout_seconds is not None:
+        app_settings.default_run_timeout_seconds = default_run_timeout_seconds
+    session.commit()
+    session.refresh(app_settings)
+    return app_settings
+
+
+def format_duration_compact(seconds: int) -> str:
+    if seconds <= 0:
+        return "0 сек"
+    minutes, remaining_seconds = divmod(seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    parts: list[str] = []
+    if hours:
+        parts.append(f"{hours} ч")
+    if minutes:
+        parts.append(f"{minutes} мин")
+    if remaining_seconds and not hours:
+        parts.append(f"{remaining_seconds} сек")
+    return " ".join(parts) if parts else "0 сек"
+
+
+def _format_bytes_compact(value: int) -> str:
+    if value <= 0:
+        return "0 B"
+    amount = float(value)
+    units = ["B", "KiB", "MiB", "GiB", "TiB"]
+    unit_index = 0
+    while amount >= 1024 and unit_index < len(units) - 1:
+        amount /= 1024
+        unit_index += 1
+    if unit_index == 0:
+        return f"{int(amount)} {units[unit_index]}"
+    return f"{amount:.1f} {units[unit_index]}"
+
+
+def build_run_summary(result: RcloneResult) -> str:
+    combined = "\n".join(part for part in [result.stdout, result.stderr] if part)
+
+    if result.canceled:
+        return "Запуск отменен пользователем."
+
+    if result.ok:
+        return (
+            f"Успешно завершено. Перенесено файлов: {result.files_transferred}. "
+            f"Перенесено байт: {result.bytes_transferred}."
+        )
+
+    if result.returncode == 124 or is_timeout_output(combined):
+        timeout_match = re.search(r"Timed out after (\d+) seconds", combined, flags=re.IGNORECASE)
+        timeout_seconds = int(timeout_match.group(1)) if timeout_match else 0
+        timeout_label = format_duration_compact(timeout_seconds) if timeout_seconds else "достигнут лимит времени"
+        return (
+            f"Превышен лимит времени запуска ({timeout_label}). "
+            f"До остановки успело перенестись {result.files_transferred} файлов и {_format_bytes_compact(result.bytes_transferred)}."
+        )
+
+    return summarize_rclone_error(combined, returncode=result.returncode)
 
 
 def create_job(session, payload: SyncJobPayload) -> SyncJob:
@@ -676,16 +744,11 @@ class JobRunner:
 
                 if result.canceled:
                     run.status = RunStatus.CANCELED.value
-                    run.summary = "Запуск отменен пользователем."
                 elif result.ok:
                     run.status = RunStatus.SUCCESS.value
-                    run.summary = (
-                        f"Успешно завершено. Перенесено файлов: {result.files_transferred}. "
-                        f"Перенесено байт: {result.bytes_transferred}."
-                    )
                 else:
                     run.status = RunStatus.FAILED.value
-                    run.summary = summarize_rclone_error(combined, returncode=result.returncode)
+                run.summary = build_run_summary(result)
                 session.commit()
                 self._finalize_snapshot(job_id, run.status, run.summary, result.bytes_transferred, result.files_transferred)
         except Exception:

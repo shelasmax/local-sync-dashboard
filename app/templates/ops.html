@@ -39,6 +39,39 @@
           <li>Для чувствительных задач сначала делайте короткий тест на отдельной подпапке.</li>
         </ul>
       </div>
+      {% if error %}
+        <div class="incident-panel incident-danger compact-incident">
+          <div class="incident-main">
+            <span class="status-dot status-failed"></span>
+            <div>
+              <strong>Не удалось обновить лимит запуска</strong>
+              <p>{{ error }}</p>
+            </div>
+          </div>
+        </div>
+      {% endif %}
+      {% if info %}
+        <div class="incident-panel incident-info compact-incident">
+          <div class="incident-main">
+            <span class="status-dot status-info"></span>
+            <div>
+              <strong>Настройка обновлена</strong>
+              <p>{{ info }}</p>
+            </div>
+          </div>
+        </div>
+      {% endif %}
+      <div class="checklist-panel">
+        <strong>Лимит одного запуска</strong>
+        <p class="panel-note">Сейчас: {{ format_duration_seconds(app_settings.default_run_timeout_seconds) }}. Для длинных cloud прогонов можно поднять лимит без ручной правки SQLite.</p>
+        <form method="post" action="/ops/settings" class="inline-form">
+          <label>
+            <span>Часы</span>
+            <input type="number" name="default_run_timeout_hours" min="1" max="72" value="{{ (app_settings.default_run_timeout_seconds // 3600) or 1 }}">
+          </label>
+          <button class="button" type="submit">Сохранить лимит</button>
+        </form>
+      </div>
     </article>
 
     <article class="panel ops-card" id="ops-recovery">

@@ -201,6 +201,12 @@ def summarize_rclone_error(output: str, *, returncode: int | None = None) -> str
     lowered = condensed.lower()
     raw_lowered = output.lower()
 
+    if "timed out after" in raw_lowered:
+        match = re.search(r"timed out after\s+(\d+)\s+seconds", output, flags=re.IGNORECASE)
+        if match:
+            return f"Превышен лимит времени запуска: {match.group(1)} сек."
+        return "Превышен лимит времени запуска."
+
     if "directory not found" in lowered:
         if "local file system at /home/" in raw_lowered:
             return (
@@ -245,6 +251,10 @@ def summarize_rclone_error(output: str, *, returncode: int | None = None) -> str
     if returncode is not None:
         return f"rclone завершился с кодом {returncode}."
     return "rclone завершился с ошибкой."
+
+
+def is_timeout_output(output: str) -> bool:
+    return "timed out after" in output.lower()
 
 
 def _extract_rclone_messages(output: str) -> list[str]:

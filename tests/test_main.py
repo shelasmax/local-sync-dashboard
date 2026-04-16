@@ -19,12 +19,14 @@ from app.main import (
     api_create_job,
     build_job_form_query,
     create_job_html,
+    extract_timeout_seconds,
     index,
     interrupted_run_recovery_steps,
     job_pre_run_checklist,
     job_requires_manual_start_checklist,
     jobs_page,
     manual_start_page,
+    ops_page,
     job_transfer_warning,
     prefill_job_payload,
     profile_diagnostic_actions,
@@ -35,9 +37,10 @@ from app.main import (
     runs_archive_page,
     runs_page,
     setup_page,
+    timeout_summary_details,
     update_job_html,
 )
-from app.models import ProfileType, RunHistory, StorageProfile, SyncJob
+from app.models import AppSettings, ProfileType, RunHistory, StorageProfile, SyncJob
 from app.schemas import SyncJobPayload
 from app.services.common import encode_json
 
@@ -357,6 +360,27 @@ class MainHelpersTest(unittest.TestCase):
         self.assertIn("Используйте mount path из `/Volumes`", body)
         self.assertIn("/Volumes/home/Ext_HDD", body)
 
+    def test_extract_timeout_seconds_reads_runtime_marker(self):
+        self.assertEqual(extract_timeout_seconds("...\nTimed out after 21600 seconds.\n"), 21600)
+
+    def test_timeout_summary_details_returns_progress_payload(self):
+        run = RunHistory(
+            job_id=1,
+            status="failed",
+            summary="Превышен лимит времени запуска (6 ч).",
+            stderr="Timed out after 21600 seconds.",
+            started_at=datetime.now(UTC),
+            bytes_transferred=4096,
+            files_transferred=7,
+        )
+
+        details = timeout_summary_details(run)
+
+        assert details is not None
+        self.assertEqual(details["timeout_seconds"], 21600)
+        self.assertEqual(details["files_transferred"], 7)
+        self.assertEqual(details["bytes_transferred"], 4096)
+
 
 class MainPagesRecoveryUxTest(unittest.TestCase):
     def setUp(self):
@@ -615,6 +639,39 @@ class MainPagesRecoveryUxTest(unittest.TestCase):
         self.assertIn("Запуск был прерван", body)
         self.assertIn("Для длинного повторного запуска выберите окно", body)
         self.assertIn("Checklist и запуск", body)
+
+    def test_run_detail_page_shows_timeout_progress_and_ops_hint(self):
+        self.run.status = "failed"
+        self.run.summary = "Превышен лимит времени запуска (6 ч). До остановки успело перенестись 3 файлов и 1.0 KiB."
+        self.run.stderr = "Timed out after 21600 seconds."
+        self.session.commit()
+
+        request = self._request(f"/runs/{self.run.id}")
+        response = run_detail_page(self.run.id, request, session=self.session)
+        body = response.body.decode()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Лимит времени этого запуска: 6 ч.", body)
+        self.assertIn("До остановки реально успело перенестись 3 файлов и 1.0 KiB.", body)
+        self.assertIn("Ops / Runbook", body)
+
+    def test_ops_page_shows_timeout_settings_form(self):
+        settings = AppSettings(
+            id=1,
+            log_retention_days=14,
+            max_concurrent_runs=1,
+            default_retry_count=1,
+            default_run_timeout_seconds=21600,
+        )
+        self.session.merge(settings)
+        self.session.commit()
+
+        request = self._request("/ops")
+        response = ops_page(request, session=self.session)
+        body = response.body.decode()
+
+        self.assertIn("Лимит одного запуска", body)
+        self.assertIn("Сейчас: 6 ч", body)
 
     def test_manual_start_page_shows_explicit_checklist_and_cta(self):
         request = self._request(f"/jobs/{self.job.id}/start")

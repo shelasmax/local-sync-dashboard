@@ -124,6 +124,13 @@
               <p>{{ run.summary }}</p>
             </div>
           </div>
+          {% if timeout_details %}
+            <ul class="plain-list compact-list incident-list-items">
+              <li>Лимит времени этого запуска: {{ timeout_details.timeout_label }}.</li>
+              <li>До остановки реально успело перенестись {{ timeout_details.files_transferred }} файлов и {{ format_bytes(timeout_details.bytes_transferred) }}.</li>
+              <li>Для длинных ночных запусков лимит можно поднять на странице <a href="/ops">Ops / Runbook</a>.</li>
+            </ul>
+          {% endif %}
         </div>
       {% else %}
         <p class="panel-note">{{ run.summary }}</p>
@@ -134,6 +141,9 @@
         <div><dt>Старт</dt><dd>{{ run.started_at }}</dd></div>
         <div><dt>Завершение</dt><dd>{{ run.finished_at or "-" }}</dd></div>
         <div><dt>Перенесено</dt><dd>{{ run.files_transferred }} файлов / {{ format_bytes(run.bytes_transferred) }}</dd></div>
+        {% if timeout_details %}
+          <div><dt>Остановка по лимиту</dt><dd>{{ timeout_details.timeout_label }}</dd></div>
+        {% endif %}
         <div><dt>Лог-файл</dt><dd>{{ run.log_path or "-" }}</dd></div>
       </dl>
     </article>

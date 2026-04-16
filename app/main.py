@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 import json
 from math import isfinite
 from pathlib import Path
+import re
 from typing import Any
 from urllib.parse import urlencode
 
@@ -41,6 +42,7 @@ from app.services.jobs import (
     job_runner,
     preview_job,
     retry_run,
+    update_app_settings,
     update_job,
     validate_job_route,
 )
@@ -158,6 +160,44 @@ def format_eta(seconds: int | None) -> str:
     if minutes and len(parts) < 2:
         parts.append(f"{minutes} мин")
     return " ".join(parts) if parts else "меньше минуты"
+
+
+def format_duration_seconds(seconds: int | None) -> str:
+    if seconds is None:
+        return "-"
+    if seconds <= 0:
+        return "0 сек"
+    minutes, remaining_seconds = divmod(seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    parts: list[str] = []
+    if hours:
+        parts.append(f"{hours} ч")
+    if minutes:
+        parts.append(f"{minutes} мин")
+    if remaining_seconds and not hours:
+        parts.append(f"{remaining_seconds} сек")
+    return " ".join(parts) if parts else "0 сек"
+
+
+def extract_timeout_seconds(output: str | None) -> int | None:
+    if not output:
+        return None
+    match = re.search(r"Timed out after (\d+) seconds", output, flags=re.IGNORECASE)
+    if not match:
+        return None
+    return int(match.group(1))
+
+
+def timeout_summary_details(run: RunHistory) -> dict[str, Any] | None:
+    timeout_seconds = extract_timeout_seconds(run.stderr) or extract_timeout_seconds(run.summary)
+    if timeout_seconds is None:
+        return None
+    return {
+        "timeout_seconds": timeout_seconds,
+        "timeout_label": format_duration_seconds(timeout_seconds),
+        "files_transferred": run.files_transferred,
+        "bytes_transferred": run.bytes_transferred,
+    }
 
 
 def profile_connection_hint(profile: StorageProfile, configured_remotes: set[str]) -> str:
@@ -1032,7 +1072,8 @@ def setup_page(request: Request, session: Session = Depends(get_session)):
 
 
 @app.get("/ops", response_class=HTMLResponse)
-def ops_page(request: Request):
+def ops_page(request: Request, info: str = "", error: str = "", session: Session = Depends(get_session)):
+    app_settings = init_settings(session)
     return templates.TemplateResponse(
         request=request,
         name="ops.html",
@@ -1043,8 +1084,31 @@ def ops_page(request: Request):
             "db_path": str(settings.db_path),
             "logs_dir": str(settings.logs_dir),
             "runtime_dir": str(settings.runtime_dir),
+            "app_settings": app_settings,
+            "format_duration_seconds": format_duration_seconds,
+            "info": info,
+            "error": error,
         },
     )
+
+
+@app.post("/ops/settings")
+def update_ops_settings(
+    default_run_timeout_hours: int = Form(...),
+    session: Session = Depends(get_session),
+):
+    if default_run_timeout_hours < 1 or default_run_timeout_hours > 72:
+        query = urlencode({"error": "Лимит запуска задается в диапазоне от 1 до 72 часов."})
+        return RedirectResponse(f"/ops?{query}", status_code=303)
+
+    timeout_seconds = default_run_timeout_hours * 60 * 60
+    update_app_settings(session, default_run_timeout_seconds=timeout_seconds)
+    query = urlencode(
+        {
+            "info": f"Лимит одного запуска обновлен: {format_duration_seconds(timeout_seconds)}.",
+        }
+    )
+    return RedirectResponse(f"/ops?{query}", status_code=303)
 
 
 @app.get("/profiles", response_class=HTMLResponse)
@@ -1797,6 +1861,7 @@ def run_detail_page(run_id: int, request: Request, session: Session = Depends(ge
             "format_eta": format_eta,
             "interrupted_run_recovery_steps": interrupted_run_recovery_steps,
             "job_requires_manual_start_checklist": job_requires_manual_start_checklist,
+            "timeout_details": timeout_summary_details(run),
             "transfer_warning": job_transfer_warning(
                 run.job.source_profile if run.job else None,
                 run.job.target_profile if run.job else None,

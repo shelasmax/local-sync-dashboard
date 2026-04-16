@@ -48,6 +48,7 @@
 - расширенное mapping ошибок профилей и запусков в конкретные сценарии `/ops`
 - более плотная связка `последняя проверка` → `что проверить` → `что сделать дальше`
 - richer scenarios для network/auth/mount/endpoint problems
+- при repeated retries для одного long-running маршрута UI должен ещё быстрее отвечать на вопрос “что уже выгружено, что осталось и это повторная сверка или реальная догрузка хвоста”
 
 ### 5. `rclone` runtime-параметры как `profile defaults + job override`
 
@@ -63,6 +64,7 @@
 - безопасные рекомендованные значения и helper-текст для сценариев с большим числом маленьких файлов
 - понятное разделение между безопасными дефолтами и более рискованными power-user настройками
 - отображение effective `rclone` runtime flags в preview / run detail, чтобы пользователь понимал, с чем именно пошел запуск
+- более явное отображение effective timeout рядом с runtime flags, чтобы длинные ночные job не выглядели как случайный `failed`
 - миграционный путь без поломки уже сохраненных job-level настроек
 
 ### 6. Адресный operational polish без редизайна
@@ -129,6 +131,7 @@
 - `scripts/launchd_status.sh` для проверки loaded/running state агента, listener на `127.0.0.1:8000` и хвоста service-логов
 - job-level runtime tuning `rclone` в задаче: `transfers`, `checkers`, `fast-list`
 - additive миграция `sync_jobs`, чтобы новые runtime-поля доезжали в существующую локальную БД без reset
+- явная timeout-диагностика для long-running run: summary теперь показывает timeout, run detail — реально перенесённые файлы/байты, `/ops` — минимальную настройку лимита одного запуска
 - явные подсказки в `/profiles`, `/setup` и docs, что `Synology SMB` нужно заводить через локальный путь `/Volumes/...`, а не через `smb://...`
 - helper-блоки в `/profiles`, ведущие из типовых diagnostic проблем в конкретные сценарии `/ops`
 - counters на `/profiles` и более action-oriented profile helper UX

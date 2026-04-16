@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.1.1 - 2026-04-16
+
+### Timeout visibility and operational progress clarity
+
+- Fixed misleading failed-run summaries for timed-out transfers: long-running `rclone copy` runs that hit the app timeout now explicitly say that the time limit was exceeded instead of surfacing an early `0 B` progress snippet from `stderr`.
+- Added actual progress context to timeout summaries and run detail: the UI now shows how many files and bytes were really transferred before the stop, which is especially important for multi-attempt routes like `Synology SMB -> Yandex Disk`.
+- Extended `/runs/{id}` so a timed-out run shows the timeout window and the transferred amount directly in the incident block and key-value summary instead of forcing the operator to inspect raw logs.
+- Added a minimal operational control on `/ops` to raise the default per-run timeout safely through existing `AppSettings`, without manual SQLite edits or schema changes.
+- Captured the real operational lesson from the current `Ext_HDD` route in docs: repeated retries on the same `rclone copy` job usually work as repeat-from-delta, and the runtime snapshot is now the fastest place to see whether the current attempt is rechecking history or copying the actual remaining tail.
+
 ## v2.1.0 - 2026-04-16
 
 ### Job-level rclone runtime tuning for long-running routes
