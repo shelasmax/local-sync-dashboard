@@ -1,319 +1,139 @@
+<div align="center">
+
+<img src="app/static/favicon.svg" width="72" height="72" alt="Local Sync Dashboard logo" />
+
 # Local Sync Dashboard
 
-Текущий релиз: `v2.1.1`
+**Your files. Your Mac. One control room.**
 
-Локальный веб-инструмент для macOS, который помогает безопасно настраивать и запускать однонаправленные выгрузки между:
+Plan, run, and monitor one-way file copies between S3, Synology, Yandex Disk, and local folders — with a local web interface powered by rclone.
 
-- `S3` и `S3-compatible` хранилищами
-- `Яндекс Диском`
-- локальными папками
-- смонтированными папками `Synology`
-- локальными папками `iCloud Drive` и `Google Drive for Desktop`
+[![Release](https://img.shields.io/github/v/release/shelasmax/local-sync-dashboard?color=2f6f63)](https://github.com/shelasmax/local-sync-dashboard/releases/latest)
+![macOS](https://img.shields.io/badge/platform-macOS-9f5a35)
+![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-2f6f63)
+![rclone copy](https://img.shields.io/badge/transfer-rclone%20copy-9f5a35)
 
-Проект задуман как удобная локальная панель управления поверх `rclone`: приложение хранит конфигурацию, показывает статусы, запускает задачи по расписанию и сохраняет историю запусков.
+**English** · [Русский](README.ru.md)
 
-## Релиз `v2.1.1`
+[Quick start](#quick-start) · [Screenshots](docs/SCREENSHOTS.md) · [Releases](https://github.com/shelasmax/local-sync-dashboard/releases) · [Changelog](CHANGELOG.md)
 
-- таймаут long-running запуска теперь показывается явно в `summary`, а не маскируется ранним progress-snippet из `stderr`
-- на странице конкретного запуска видно, сколько файлов и байт реально успело дойти до target до остановки по лимиту времени
-- в `/ops` добавлена минимальная operational-настройка лимита одного запуска, чтобы длинные ночные выгрузки не требовали ручной правки SQLite
-- docs и runbook теперь явнее фиксируют repeat-from-delta модель: повторные `rclone copy` по одному и тому же маршруту обычно дозаливают хвост, а не переносят весь объём заново
+</div>
 
-## Релиз `v2.1.0`
+![Local Sync Dashboard: service readiness, routes, and recent runs](docs/images/overview.png)
 
-- для задач появились явные runtime-настройки `rclone`: `transfers`, `checkers` и `fast-list`
-- новые параметры проходят через UI `/jobs`, preview команды и реальный запуск `rclone copy`
-- добавлена additive-миграция `sync_jobs`, чтобы новые поля безопасно доезжали до существующей локальной SQLite-базы без ручного пересоздания
-- подтвержден operational-кейс ускорения long-running маршрута `Synology SMB -> Yandex Disk`: после service rollout и настройки `transfers=8`, `checkers=16`, `fast-list=on` small-files job вышел из почти нулевой скорости в рабочий диапазон нескольких `MB/s`
-- backlog на следующий шаг в этой зоне теперь явно фиксирует модель `profile defaults + job override`, а не только точечные поля у задачи
+<p align="center"><sub>Real application UI with synthetic demo data. The application interface is currently in Russian; documentation is available in English and Russian.</sub></p>
 
-## Релиз `v2.0.0`
+## A control room for your transfers
 
-- `launchd` для локальной эксплуатации больше не упирается в `~/Documents`: устойчивый service-mode теперь предполагает service-копию в `~/Library/Application Support/com.localsync.dashboard/service`
-- добавлен operational-скрипт `./scripts/update_launchd_service.sh` для синхронизации service-копии, обновления service `.venv` и безопасного рестарта `launchd`-агента
-- добавлен `./scripts/launchd_status.sh`, который показывает loaded/running state агента, PID, listener на `127.0.0.1:8000` и хвост service-логов
-- порт `8000` явно зафиксирован как канонический локальный endpoint проекта для ручного запуска, docs и `launchd`
+Keep recurring file transfers in one place: configure storage profiles, inspect the exact route, preview a copy with a dry run, and follow progress while rclone does the work.
 
-## Релиз `v1.3.0`
+| Capability | What it gives you |
+| --- | --- |
+| **Storage profiles** | Reuse local folders, mounted Synology shares, S3-compatible storage, and Yandex Disk across jobs. |
+| **Preview before copying** | Check source and destination paths, browse folders, and run a dry run before moving data. |
+| **Manual and scheduled jobs** | Start on demand or use hourly, daily, weekly, and cron schedules. Edit, clone, pause, and resume schedules. |
+| **Live progress** | See transferred bytes and files, speed, ETA, checks, and active items. |
+| **Recovery and diagnostics** | Find interrupted runs and repeated failures, then follow a relevant scenario in the built-in Ops / Runbook. |
+| **Tuning and history** | Set bandwidth, checksums, filters, `transfers`, `checkers`, and `fast-list`; keep full history in a separate archive. |
 
-- диагностика профилей теперь глубже связана с `Ops / Runbook`: на `/profiles` появились counters, helper-блоки и прямые ссылки в релевантные runbook-сценарии
-- `/runs` стал устойчивее как operational screen: активные, recovery и incident-секции больше не исчезают целиком и показывают явные empty-state, если live snapshot сейчас отсутствует
-- верхние `Скрыть` / `Показать` блоки на `/`, `/jobs` и `/runs` теперь не только переключают подпись, но и гарантированно скрывают содержимое через стабильный DOM/CSS toggle
-- `/profiles` стал безопаснее к runtime-сбоям setup-диагностики: при проблеме с diagnostics страница открывается с fallback, а не падает в `500`
+> **Copy behavior:** jobs use [`rclone copy`](https://rclone.org/commands/rclone_copy/). Files missing from the source are not automatically deleted from the destination. Changed files at the same destination path can still be updated or overwritten; this is not a versioned backup system.
 
-## Релиз `v1.2.1`
+## See it in action
 
-- `Запуски` разделены на operational screen `/runs` и отдельный archive `/runs/archive`
-- добавлены pagination, фильтры и ручная cleanup-очистка локальной истории запусков
-- верхние recovery/incident-блоки на `/jobs`, `/runs` и `/` стали компактнее и получили явные `Скрыть` / `Показать` с сохранением состояния после перезагрузки страницы
-- активные run на `/runs` теперь берутся из live runtime snapshots, поэтому блок не исчезает, если runtime уже знает о запуске
-- диагностика профилей теперь ведет в конкретные сценарии `/ops` для missing remote, auth/rights, local path/mount и Synology mount path
+| Jobs and live progress | Storage profiles |
+| --- | --- |
+| [![Jobs, schedules, and live copy progress](docs/images/jobs.png)](docs/images/jobs.png) | [![Reusable storage profiles and diagnostics](docs/images/profiles.png)](docs/images/profiles.png) |
+| Manage routes and see which copy is running. | Check connections and find the next corrective action. |
 
-## Релиз `v1.2.0`
+[Open the full gallery →](docs/SCREENSHOTS.md)
 
-- orphan-run reaper: каждые 5 минут проверяет зависшие `running`-запуски без живого потока и помечает их `interrupted`
-- SIGKILL после grace period: если `rclone` не завершается по `SIGTERM` (например, D-state от stale SMB mount), через 5 секунд отправляется `SIGKILL`
-- широкая обработка исключений в `_execute_job`: неперехваченные исключения теперь записывают статус `FAILED` в БД, а не остав��яют `running` навсегда
-- безопасный I/O в stream-цикле: `readline()` и `stream.read()` обёрнуты в `try/except`, чистка selector — в `finally`
+## Supported storage
 
-## Релиз `v1.1.1`
+| Storage | How it connects |
+| --- | --- |
+| **S3 / S3-compatible** | An existing rclone remote, plus a bucket and optional prefix. |
+| **Yandex Disk** | An existing rclone remote, for example `yadisk:`. |
+| **Synology** | An SMB/NFS share already mounted on your Mac under `/Volumes`. |
+| **Local folders** | Any accessible directory on the Mac. |
+| **iCloud Drive / Google Drive for Desktop** | Their locally available folders, through a local-folder profile. No direct cloud SDK integration. |
 
-- исправлена блокировка UI при активных rclone-задачах: `location.reload()` заменён на AJAX-поллинг `/api/runtime/jobs`
-- добавлен TTL-кеш (30с) для `collect_setup_diagnostics()`
+All transfers run **through your Mac**, including cloud-to-cloud copies. The Mac must stay awake, online, and connected to the required volumes. The app does not mount network shares or create rclone remotes for you.
 
-## Релиз `v1.1.0`
+## Quick start
 
-- интерфейс перестроен в `Control Room`-стиле: `Status / Route / Next Action`
-- задачи теперь можно редактировать и клонировать прямо из списка и из истории запусков
-- форма задач показывает `effective source/target route` до запуска
-- для source/target появились быстрые browse-подсказки по подпапкам
-- для Synology маршрутов появилась защита от типовой ошибки `/home/...` и от дублирования `source_path`
-- repeated failed runs теперь читаются как operational incident, а не как набор разрозненных логов
-- shell и основные экраны приведены к единому компактному ритму: `/`, `/jobs`, `/runs`, `/profiles`, `/setup`, `/ops`
-- вкладка `Статус` убрана из основной навигации, operational readiness перенесен на главную
-
-## Что уже умеет MVP
-
-- создавать профили источников и назначений
-- работать с локальными папками, `Synology`, `S3` и `Яндекс Диском`
-- хранить дополнительные секреты в `macOS Keychain`, а не в `SQLite`
-- перепроверять профиль вручную и получать более понятные диагностические подсказки
-- сохранять результат последней проверки профиля и показывать его в UI
-- подсказывать разные шаги проверки для `S3`, `Yandex` и локальных путей
-- показывать action-oriented CTA в диагностике профиля: `Открыть setup`, `Исправить профиль`, `Проверить снова`
-- запускать однонаправленные задачи в режиме `copy`
-- запускать задачи вручную и по расписанию
-- редактировать существующие задачи и создавать новые как копию проблемного маршрута
-- задавать для конкретной задачи runtime-параметры `rclone` (`transfers`, `checkers`, `fast-list`) для тяжелых small-files маршрутов
-- ставить задачи на паузу и возобновлять их
-- удалять задачи из интерфейса
-- сохранять историю запусков и логи
-- показывать live progress для активных app-managed задач
-- для timed-out запусков явно показывать лимит времени и реально перенесённый объём до остановки
-- делать `dry-run preview` для сохраненной задачи перед реальным запуском
-- показывать `effective route` и блокировать заведомо ошибочные Synology маршруты до реального запуска
-- сохранять последний известный runtime state активной задачи
-- после рестарта переводить незавершенные `running`-запуски в `interrupted`
-- давать recovery flow для `interrupted` запусков из `/runs` и `/jobs`
-- показывать setup-диагностику по локальным путям и `rclone remotes`
-- явно предупреждать в `/setup` и `/jobs`, что cloud-to-cloud маршруты идут через локальный `Mac`
-- показывать pre-run checklist для длинных cloud маршрутов при составлении задачи
-- держать `/profiles` и `/jobs` в list-first UX: список как основной экран, а создание в раскрывающемся блоке сверху
-- использовать единый icon-button UX для основных действий с `title`/tooltip и логотипом в стиле favicon рядом с названием проекта
-
-## Что важно про безопасность
-
-MVP намеренно ограничен:
-
-- используется только `copy`, без `sync`
-- нет автоматических удалений на target
-- одновременно выполняется только одна задача
-- cloud-интеграции делегированы `rclone`
-
-Это снижает риск случайной потери данных при первых настройках.
-
-## Как сейчас идет перенос данных
-
-Текущая архитектура не делает server-side copy между облаками.
-
-- `rclone` запускается локально на вашем `Mac`
-- данные читаются источником локальным процессом
-- затем этот же локальный процесс отправляет их в target
-
-Пример: перенос `S3 -> Яндекс Диск` сейчас идет через локальный `MacBook`, а не напрямую между двумя облаками.
-
-Из этого следуют практические ограничения:
-
-- скорость зависит от локального интернета и состояния `Mac`
-- sleep или перезагрузка `Mac` остановят текущий перенос
-- повторный запуск `rclone copy` обычно докачивает только недостающее, без удаления уже переданных файлов
-- если long-running run упёрся в лимит времени приложения, это теперь видно прямо в `summary`, run detail и `/ops`
-- после рестарта приложение сохраняет последний известный прогресс и помечает run как `interrupted`
-- продуктовая модель recovery: повторный `rclone copy` с дельты; `re-attach` к уже живому процессу не поддерживается
-
-## Требования
-
-- `macOS`
-- `Python 3.11+`
-- установленный `rclone`
-- настроенные `rclone remotes` для нужных облаков
-
-## Установка
+You need **macOS**, **Python 3.11+**, **rclone**, and **Git**. Install rclone using its [official installation guide](https://rclone.org/install/).
 
 ```bash
+git clone https://github.com/shelasmax/local-sync-dashboard.git
+cd local-sync-dashboard
+python3 --version  # Must be 3.11 or newer
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .
 ```
 
-Зависимость `python-multipart` подтягивается автоматически и нужна для HTML-форм в интерфейсе.
-
-## Запуск
+For cloud storage, create your connections in rclone first:
 
 ```bash
-source .venv/bin/activate
-uvicorn app.main:app
+rclone config
+rclone listremotes
 ```
 
-Для реальных длинных переносов запускайте приложение без `--reload`: это локальный операционный UI, и любой dev-reload или ручной рестарт оборвёт текущую задачу, после чего она восстановится только как `interrupted`.
-
-Для длинных маршрутов вроде `Synology SMB -> Yandex Disk` учитывайте и второй operational-лимит: у каждого app-managed запуска есть лимит времени. Начиная с `v2.1.1` его можно поднять через `/ops`, а timed-out run теперь явно показывает, сколько уже успело дойти до target до остановки.
-
-После старта откройте:
-
-`http://127.0.0.1:8000`
-
-Канонический локальный адрес для этого проекта: `http://127.0.0.1:8000`.
-Если приложение временно поднимается на другом порту вроде `8011`, это считается только локальным override для конкретного запуска, а не стандартом проекта. В таком случае нужно вручную держать в согласованном состоянии команду запуска, `launchd` plist и ссылку, по которой вы открываете UI.
-
-## Как устроен проект
-
-### Основной стек
-
-- `FastAPI` — HTTP API и серверный HTML UI
-- `Jinja2` — шаблоны интерфейса
-- `SQLAlchemy` + `SQLite` — локальное состояние приложения
-- `APScheduler` — фоновые расписания
-- `rclone` — фактический перенос файлов
-- `macOS Keychain` — хранение пользовательских секретов
-- additive SQLite-миграции на старте приложения — безопасная эволюция локальной схемы без ручного reset
-
-### Ключевые файлы
-
-- `app/main.py` — маршруты UI и API
-- `app/models.py` — модели БД
-- `app/services/profiles.py` — логика профилей
-- `app/services/jobs.py` — scheduler и запуски задач
-- `app/services/rclone.py` — интеграция с `rclone`
-- `app/templates/` — HTML UI
-- `app/static/style.css` — стили
-- `app/static/favicon.svg` — favicon приложения
-- `tests/` — unit-тесты
-
-## Поддерживаемые профили
-
-### Local Folder
-
-Обычная локальная папка, включая:
-
-- `iCloud Drive`
-- `Google Drive for Desktop`
-- любые каталоги на диске Mac
-
-### Synology Share
-
-В MVP ожидается уже смонтированная папка SMB/NFS. Приложение не монтирует шару само.
-
-Для профиля нужно указывать локальный путь macOS из `/Volumes`, а не `smb://...` и не внутренний путь NAS.
-
-Пример:
-
-- Finder / Connect to Server: `smb://Synology_Max._smb._tcp.local/home/Ext_HDD`
-- в профиле приложения: `/Volumes/home/Ext_HDD`
-- или root профиля: `/Volumes/home`, а в задаче `source_path=Ext_HDD`
-
-Неправильно:
-
-- `smb://Synology_Max._smb._tcp.local/home/Ext_HDD`
-- `/home`
-- `/home/Ext_HDD`
-
-### S3 Remote
-
-Профиль использует уже существующий `rclone remote`. В UI можно отдельно редактировать:
-
-- имя remote
-- bucket
-- prefix
-- provider
-- region
-- endpoint
-
-Но сам `rclone remote` все равно должен быть создан заранее.
-
-### Yandex Disk Remote
-
-Профиль использует уже существующий `rclone remote`, например `yadisk:`.
-
-## Где хранятся данные приложения
-
-По умолчанию:
-
-- БД: `./var/app.db`
-- логи: `./var/logs/`
-- runtime snapshots активных задач: `./var/runtime/`
-
-Путь можно переопределить переменной окружения:
-
-`LOCAL_SYNC_DATA_DIR`
-
-## Автозапуск через launchd
-
-В проекте есть шаблон:
-
-[launchd/com.localsync.dashboard.plist](/Users/maksim/Documents/Projects/Mini%20Tasks/S3_Synology-to-Yandex_DIsk/launchd/com.localsync.dashboard.plist)
-
-Перед использованием нужно подставить абсолютные пути к проекту и `.venv`.
-Шаблон в репозитории ожидает канонический порт `8000`; если кто-то сознательно меняет порт, его нужно изменить и в plist, и в адресе открытия UI.
-
-Если `launchd` на этом Mac уже перенаправлен на service-копию вне `Documents`, обновлять ее удобнее через:
+Start the dashboard:
 
 ```bash
-./scripts/update_launchd_service.sh
+uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-Скрипт синхронизирует код в service-копию, не трогает `service/var` с БД/логами/runtime snapshots, обновляет service `.venv` и перезапускает агент `com.localsync.dashboard`.
+Open **[127.0.0.1:8000](http://127.0.0.1:8000)**.
 
-Проверить состояние агента, PID, listener и последние строки логов можно через:
+1. **Prepare** (`Подготовка`, `/setup`): check rclone, remotes, and mounted folders.
+2. **Add profiles** (`Профили`, `/profiles`): select the source and destination storage.
+3. **Create a job** (`Задачи`, `/jobs`): inspect the route and run a dry run.
+4. **Start the copy** and follow it in **Runs** (`Запуски`, `/runs`).
 
-```bash
-./scripts/launchd_status.sh
-```
+For Synology, connect in Finder first. A share such as `smb://nas.local/media/photos` becomes a local path such as `/Volumes/media/photos`. Use the actual mounted path; do not enter the SMB URL or an internal NAS path such as `/home`.
 
-## Документация
+## Running longer transfers
 
-- [docs/PROJECT.md](/Users/maksim/Documents/Projects/Mini%20Tasks/S3_Synology-to-Yandex_DIsk/docs/PROJECT.md) — обзор архитектуры и текущего состояния проекта
-- [docs/BACKLOG.md](/Users/maksim/Documents/Projects/Mini%20Tasks/S3_Synology-to-Yandex_DIsk/docs/BACKLOG.md) — backlog с приоритетами
-- [CHANGELOG.md](/Users/maksim/Documents/Projects/Mini%20Tasks/S3_Synology-to-Yandex_DIsk/CHANGELOG.md) — зафиксированные релизные изменения
-- [docs/plans/2026-04-13-job-progress-visibility.md](/Users/maksim/Documents/Projects/Mini%20Tasks/S3_Synology-to-Yandex_DIsk/docs/plans/2026-04-13-job-progress-visibility.md) — план по progress bar, ETA и live-статусам задач
-- [docs/plans/2026-04-15-vps-relay-research.md](/Users/maksim/Documents/Projects/Mini%20Tasks/S3_Synology-to-Yandex_DIsk/docs/plans/2026-04-15-vps-relay-research.md) — исследование варианта с always-on relay / VPS вне MVP
-- [agents.md](/Users/maksim/Documents/Projects/Mini%20Tasks/S3_Synology-to-Yandex_DIsk/agents.md) — локальные правила для агентной разработки
-- `/ops` — встроенный операционный runbook по ночным запускам, recovery, `launchd` и backup/restore
+- Run without `--reload`. Restarting the app interrupts app-managed transfers.
+- The default time limit is **6 hours per run**. Adjust it in **Ops / Runbook → run limit** (`/ops`) before a longer transfer; the UI accepts 1–72 hours.
+- After an interruption, rerun the same `copy` to copy the remaining delta. rclone rechecks files; the app does not reattach to the old process or guarantee byte-level resume.
+- Use live progress to assess the current attempt. A previous run's summary describes that attempt only.
 
-## Полезные команды
+For persistent local operation, see the [macOS service guide](docs/OPERATIONS.md). It covers the service copy, update/status scripts, backup, and recovery.
 
-### Локальные проверки
+## Local data and boundaries
+
+The default data directory is `var/`: SQLite in `var/app.db`, logs in `var/logs/`, and active-run snapshots in `var/runtime/`. Set `LOCAL_SYNC_DATA_DIR` to use another location.
+
+Additional secrets entered in the app are stored in **macOS Keychain**. Cloud authentication is managed separately by **rclone**. Treat its configuration and your application data as private.
+
+This is a local, single-user utility. Keep it bound to `127.0.0.1`; it has no multi-user authentication layer. There is no two-way synchronization, delete propagation, or conflict resolution. Archive cleanup removes local run records and logs, not source or destination files.
+
+## Latest release · v2.1.1
+
+Timeouts now have explicit failure summaries, run details show the bytes and files already transferred, and the Ops page lets you adjust the per-run time limit.
+
+[Bilingual release notes →](https://github.com/shelasmax/local-sync-dashboard/releases/tag/v2.1.1)
+
+## Development
+
+Built with **FastAPI · Jinja2 · SQLAlchemy / SQLite · APScheduler · rclone · macOS Keychain**.
 
 ```bash
 .venv/bin/python -m compileall app tests
 .venv/bin/python -m unittest tests.test_common tests.test_system tests.test_profiles tests.test_rclone tests.test_jobs tests.test_runtime_recovery
 ```
 
-### Полезные команды rclone
+| Area | Location |
+| --- | --- |
+| HTTP routes and UI | [`app/main.py`](app/main.py), [`app/templates/`](app/templates/) |
+| Profiles and credentials | [`app/services/profiles.py`](app/services/profiles.py), [`app/services/keychain.py`](app/services/keychain.py) |
+| Jobs, scheduling, recovery | [`app/services/jobs.py`](app/services/jobs.py) |
+| Transfer commands | [`app/services/rclone.py`](app/services/rclone.py) |
+| Local state | [`app/models.py`](app/models.py), [`app/database.py`](app/database.py) |
 
-```bash
-rclone listremotes
-rclone about yadisk:
-rclone lsf "S3 Beget:bucket-name" --max-depth 1
-```
+Next priorities: configuration export and restore without secrets, notifications and migration to another Mac, profile-level runtime defaults, and guided rclone setup. See the [detailed backlog (Russian)](docs/BACKLOG.md) and [architecture notes (Russian)](docs/PROJECT.md).
 
-## Текущее состояние
-
-Проект уже пригоден для реальной локальной эксплуатации, но несколько вещей еще в работе:
-
-- archive UX для полной истории запусков, pagination и ручная cleanup-очистка локального run history
-- backup/restore конфигурации без секретов
-- нотификации и более практичный `launchd`-операционный слой
-- guided setup для `rclone remote`
-
-## Ограничения
-
-- нет двусторонней синхронизации
-- нет delete propagation
-- нет conflict resolution
-- текущий restart-safe режим умеет фиксировать прерывание и последний известный прогресс; восстановление идет через повторный `copy` с дельты, а не через `re-attach`; orphan-run reaper проверяет зависшие запуски каждые 5 минут
-- нет production-grade multi-user сценариев
-
-## Лицензия и публикация
-
-Репозиторий публикуется как локальный macOS utility project. Если захотите, следующим шагом можно добавить `LICENSE`, релизные теги и более формальный changelog.
+Found a problem? [Open an issue](https://github.com/shelasmax/local-sync-dashboard/issues) with your macOS, Python, rclone, and app versions, reproduction steps, and a sanitized error message. Remove tokens, credentials, and private file paths before posting.

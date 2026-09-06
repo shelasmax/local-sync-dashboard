@@ -45,7 +45,7 @@
 - ссылку на секрет в Keychain
 - `options_json`
 
-Для `synology_share` значение `root_path_or_remote` должно быть уже смонтированным локальным путем macOS из `/Volumes`, а не `smb://...` и не путём на самой NAS. Например, для `smb://Synology_Max._smb._tcp.local/home/Ext_HDD` корректный профиль — `/Volumes/home/Ext_HDD` или `/Volumes/home` с `source_path=Ext_HDD` в задаче.
+Для `synology_share` значение `root_path_or_remote` должно быть уже смонтированным локальным путем macOS из `/Volumes`, а не `smb://...` и не путём на самой NAS. Например, для `smb://nas.local/media/photos` корректный профиль — `/Volumes/media/photos` или `/Volumes/media` с `source_path=photos` в задаче.
 
 ### `SyncJob`
 
